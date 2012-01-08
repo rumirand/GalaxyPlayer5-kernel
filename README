@@ -3,6 +3,6 @@ This repository contains the source code for building a custom kernel to Galaxy 
 - Get a working linux system.
 - Get CodeSourcery toolchain 2009q3-67.
 - Download the contents of this repository.
-- "make def_config".
+- "make rj_eur_defconfig".
 - "make menuconfig" and change everything you want and set up your initrd.
 - "make".
