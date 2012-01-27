@@ -676,7 +676,11 @@ static ssize_t mdnieset_ui_file_cmd_store(struct device *dev,
 	return size;
 }
 
+#if defined(CONFIG_VENTURI_KOR) || defined(CONFIG_ARIES_KOR) 	
+static DEVICE_ATTR(mdnieset_ui_file_cmd,0666, mdnieset_ui_file_cmd_show, mdnieset_ui_file_cmd_store);	//VenturiGB_Usys_jypark 2011.08.24 - change permission for DMB
+#else
 static DEVICE_ATTR(mdnieset_ui_file_cmd,0664, mdnieset_ui_file_cmd_show, mdnieset_ui_file_cmd_store);
+#endif
 static ssize_t mdnieset_outdoor_file_cmd_show(struct device *dev,
         struct device_attribute *attr, char *buf)
 {
@@ -708,7 +712,11 @@ static ssize_t mdnieset_outdoor_file_cmd_store(struct device *dev,
 	return size;
 }
 
+#if defined(CONFIG_VENTURI_KOR) || defined(CONFIG_ARIES_KOR) 
+static DEVICE_ATTR(mdnieset_outdoor_file_cmd,0666, mdnieset_outdoor_file_cmd_show, mdnieset_outdoor_file_cmd_store);	//VenturiGB_Usys_jypark 2011.08.24 - change permission for DMB
+#else
 static DEVICE_ATTR(mdnieset_outdoor_file_cmd,0664, mdnieset_outdoor_file_cmd_show, mdnieset_outdoor_file_cmd_store);
+#endif
 void init_mdnie_class(struct s5p_lcd *lcd)
 {
 #ifdef CONFIG_FB_S3C_NT35580

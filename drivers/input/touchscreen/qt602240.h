@@ -764,7 +764,6 @@ typedef struct
 	uint8_t t9_blen_for_fherr;
 	uint8_t t9_thr_for_fherr;
 	uint8_t t22_noisethr_for_fherr;
-	uint8_t freq_for_fherr0[5];
 	uint8_t freq_for_fherr1[5];
 	uint8_t freq_for_fherr2[5];
 	uint8_t freq_for_fherr3[5];

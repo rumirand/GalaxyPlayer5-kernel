@@ -25,39 +25,6 @@
 
 #include "mcdriver.h"
 
-#if 1 // Add for Venturi
-#ifdef CONFIG_VENTURI_KOR // Only KOR, Enable analog volume feature.
-#define CONFIG_MUSIC_CODEC_GAIN
-#endif
-#define CONFIG_FMRADIO_CODEC_GAIN
-#define CONFIG_VOIP
-#define CODEC_DEBUG
-#define MC1N2_LOAD_PRD_FOR_SPL
-#endif
-
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-#define MUSIC_DEFAUTL_VOL_LEVEL 15
-#define MUSIC_VOL_LEVEL 31
-#endif
-
-#ifdef CONFIG_FMRADIO_CODEC_GAIN
-#define FM_VOL_LEVEL 31
-
-unsigned int McDrv_Ctrl_set_fm_vol(unsigned int volume);
-unsigned char McDrv_Ctrl_get_fm_vol(void);
-unsigned int McDrv_Ctrl_fm_mute(void);
-#else
-#define FM_FIXED_GAIN 0x0f01
-#endif
-
-#ifdef CONFIG_VOIP
-int mc1n2_get_voip_status(void);
-void mc1n2_start_voip(void);
-void mc1n2_end_voip(void);
-void mc1n2_set_voip_playback_parameters(int micpath);
-void mc1n2_set_voip_mic_parameters(int path);
-#endif
-
 /*
  * Virtual registers
  */
@@ -70,10 +37,10 @@ enum {
 	MC1N2_HEADPHONE_VOL_R,
 	MC1N2_ADC_VOL_L,
 	MC1N2_ADC_VOL_R,
-	MC1N2_MIC_ADC_VOL,
+	MC1N2_MIC_ADC_VOL,// yosef added for mic gain test
 	MC1N2_N_REG,
-	MC1N2_MIC1_GAIN,
-	MC1N2_MIC2_GAIN,
+	MC1N2_MIC1_GAIN, // yosef added for mic gain test
+	MC1N2_MIC2_GAIN, // yosef added for mic gain test
 	MC1N2_DAC_VOL_L,
 	MC1N2_DAC_MASTER,
 	MC1N2_DAC_DAT_VAL,
@@ -111,24 +78,26 @@ enum {
 	FMR_DUAL_MIX
 };
 
+enum {
+	CMD_FMR_INPUT_DEACTIVE = 0,
+	CMD_FMR_INPUT_ACTIVE,
+	CMD_FMR_FLAG_CLEAR,
+	CMD_FMR_END,
+	CMD_CALL_FLAG_CLEAR,
+	CMD_CALL_END,
+	CMD_RECOGNITION_DEACTIVE,
+	CMD_RECOGNITION_ACTIVE,
+	CMD_VOIP_ON = 10,
+	CMD_VOIP_OFF = 11,
+	#ifdef CONFIG_TDMB	// VenturiGB_Usys_jypark 2011.08.08 - DMB [[
+    CMD_DMB_ON=17,
+    CMD_DMB_OFF =18,
+	#endif				// VenturiGB_Usys_jypark 2011.08.08 - DMB ]]
+	CMD_FAKE_PROXIMITY_SENSOR_ON = 81,
+	CMD_FAKE_PROXIMITY_SENSOR_OFF = 82,
+};
 
-#define CMD_FMR_INPUT_DEACTIVE		0  /* Codec Input PGA off */
-#define CMD_FMR_INPUT_ACTIVE		1  /* Codec Input PGA on */
-#define CMD_FMR_FLAG_CLEAR		2  /* Radio flag clear for shutdown */
-#define CMD_FMR_END			3  /* Codec off in FM radio mode */
-#define CMD_CALL_FLAG_CLEAR		4  /* Call flag clear for shutdown */
-#define CMD_CALL_END			5  /* Codec off in call mode */
-#define CMD_RECOGNITION_DEACTIVE	6  /* Voice recognition off */
-#define CMD_RECOGNITION_ACTIVE		7  /* Voice recognition on */
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-#define CMD_MUSIC_START                 8  /* Start music stream type */
-#define CMD_MUSIC_STOP                  9  /* Stop music stream type */
-#endif
-#ifdef CONFIG_VOIP
-#define CMD_VOIP_START                  10 /* Start VoIP */
-#define CMD_VOIP_STOP                   11 /* Stop VoIP */
-#endif
-
+#define MC1N2_N_VOL_REG MC1N2_ADCL_MIC1_SW	 
 
 #define MC1N2_DSOURCE_OFF		0
 #define MC1N2_DSOURCE_ADC		1
@@ -146,6 +115,8 @@ enum {
 #define mc1n2_i2c_read_byte(c,r) i2c_smbus_read_byte_data((c), (r)<<1)
 
 extern struct i2c_client *mc1n2_get_i2c_client(void);
+
+#define DISABLE_ANALOG_VOLUME
 
 /*
  * For debugging
@@ -168,6 +139,8 @@ extern SINT32 McDrv_Ctrl_dbg(UINT32 dCmd, void *pvPrm, UINT32 dPrm);
 
 #endif /* CONFIG_SND_SOC_MC1N2_DEBUG */
 
+#define CODEC_DEBUG
+
 #ifdef CODEC_DEBUG
 #define SUBJECT "mc1n2"
 #define CODECDBG(format, ...)\
@@ -176,6 +149,5 @@ extern SINT32 McDrv_Ctrl_dbg(UINT32 dCmd, void *pvPrm, UINT32 dPrm);
 #else
 #define CODECDBG(format, ...)
 #endif
-
 
 #endif /* MC1N2_PRIV_H */

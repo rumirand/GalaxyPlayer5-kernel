@@ -1,4 +1,4 @@
-#include <linux/kernel.h>
+﻿#include <linux/kernel.h>
 #include <linux/i2c.h>
 #include <linux/mutex.h>
 #include <linux/delay.h>
@@ -8,18 +8,25 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 
+#include <mach/gpio-aries.h>
+
 #include "Si4709_regs.h"
 #include "Si4709_main.h"
 #include "Si4709_dev.h"
 #include "Si4709_common.h"
 
-/* For enable feature CONFIG_FMRADIO_CODEC_GAIN */
 #ifdef CONFIG_SND_S5P_WM8994
-#include "../../../sound/soc/codecs/wm8994_samsung.h"
+#include "../../../sound/soc/codecs/wm8994_samsung.h" //CONFIG_FMRADIO_CODEC_GAIN
 #endif
 #ifdef CONFIG_SND_SMDKC110_MC1N2
-#include "../../../sound/soc/codecs/mc1n2/mc1n2_priv.h"
-int Si4709_dev_volume_set_with_codec(u8 volume);
+#define CONFIG_FMRADIO_CODEC_GAIN
+#define FM_VOL_LEVEL 31
+
+extern unsigned int McDrv_Ctrl_fm(unsigned int volume);
+extern unsigned int McDrv_Ctrl_fm_mute(void);
+extern unsigned char McDrv_Ctrl_get_fm_vol(void);
+
+int McDrv_Ctrl_set_fm_vol(u8 volume);
 #endif
 
 enum {
@@ -1106,7 +1113,7 @@ int Si4709_dev_volume_set(u8 volume)
         wm8994_set_fm_codec_gain(volume);
 #endif
 #ifdef CONFIG_SND_SMDKC110_MC1N2
-        Si4709_dev_volume_set_with_codec(volume);
+        McDrv_Ctrl_set_fm_vol(volume);
 #endif
 #else
 	sysconfig2 = Si4709_dev.registers[SYSCONFIG2];
@@ -2110,13 +2117,13 @@ u8 fm_si4709_gain_table[FM_VOL_LEVEL] = {
         0x0B
 };
 
-int Si4709_dev_volume_set_with_codec(u8 volume)
+int McDrv_Ctrl_set_fm_vol(u8 volume)
 {
         int ret = 0;
         u16 sysconfig2 = 0;
         u16 sysconfig3 = 0;
 
-        debug("Si4709_dev_volume_set_with_codec : vol(%d)", volume);
+        debug("McDrv_Ctrl_set_fm_vol called :: vol(%d)", volume);
 
         if (!volume)
                 McDrv_Ctrl_fm_mute();
@@ -2145,7 +2152,7 @@ int Si4709_dev_volume_set_with_codec(u8 volume)
                 }
         }
 
-        McDrv_Ctrl_set_fm_vol(volume);
+        McDrv_Ctrl_fm(volume);
 
         return ret;
 }

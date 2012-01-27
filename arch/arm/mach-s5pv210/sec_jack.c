@@ -95,6 +95,7 @@ static unsigned int key_pressed;
 static unsigned int key_pressed_code;
 
 static struct wake_lock jack_sendend_wake_lock;
+static int recording_status;
 static int send_end_irq_token;
 static int jack_irq_token;
 
@@ -107,7 +108,23 @@ unsigned int get_headset_status(void)
 	return current_jack_type_status;
 }
 
+void set_recording_status(int value)
+{
+	recording_status = value;
+}
+
+static int get_recording_status(void)
+{
+	SEC_JACKDEV_DBG("recording_status : %d\n", recording_status);
+	return recording_status;
+}
+
 EXPORT_SYMBOL(get_headset_status);
+
+static void jack_input_selector(int jack_type_status)
+{
+	SEC_JACKDEV_DBG("jack_type_status = 0X%x", jack_type_status);
+}
 
 
 static void jack_type_detect_change(struct work_struct *ignored)
@@ -155,8 +172,10 @@ static void jack_type_detect_change(struct work_struct *ignored)
                                         disable_irq_wake(send_end->eint);
 					send_end_irq_token=0;
 				}
-
-				McDrv_Ctrl_MICBIAS2(0);
+				if(!get_recording_status())
+				{
+					McDrv_Ctrl_MICBIAS2(0);
+				}
 			}
 			/* unstable zone */
 			else
@@ -174,9 +193,10 @@ static void jack_type_detect_change(struct work_struct *ignored)
 						send_end_irq_token=0;
 					}
 					current_jack_type_status = SEC_HEADSET_3_POLE_DEVICE;
-
-					McDrv_Ctrl_MICBIAS2(0);
-
+					if(!get_recording_status())
+					{
+						McDrv_Ctrl_MICBIAS2(0);
+					}
 					bQuit=true;
 				}
 				/* If 4 pole is inserted slowly, ADC value should be lower than 250.
@@ -198,14 +218,16 @@ static void jack_type_detect_change(struct work_struct *ignored)
 			bQuit=true;
 
 			current_jack_type_status = SEC_JACK_NO_DEVICE;
-
-			McDrv_Ctrl_MICBIAS2(0);
-                                
+			if(!get_recording_status())
+			{
+				McDrv_Ctrl_MICBIAS2(0);
+    			}
 			SEC_JACKDEV_DBG("JACK dev detached  \n");			
 
 		}
                 
 		switch_set_state(&switch_jack_detection, current_jack_type_status);
+		jack_input_selector(current_jack_type_status);
 	}
 }
 
@@ -232,7 +254,10 @@ static void jack_detect_change(struct work_struct *ignored)
 		{
 			if(state != (gpio_get_value(det_jack->gpio) ^ det_jack->low_active))
 			{
-				McDrv_Ctrl_MICBIAS2(0);
+				if(!get_recording_status())
+				{
+					McDrv_Ctrl_MICBIAS2(0);
+				}
 				return;
 			}
 			msleep(10);
@@ -250,8 +275,11 @@ static void jack_detect_change(struct work_struct *ignored)
 		}
 
 		current_jack_type_status = SEC_JACK_NO_DEVICE;
-
-		McDrv_Ctrl_MICBIAS2(0);
+        	
+		if(!get_recording_status())
+		{
+			McDrv_Ctrl_MICBIAS2(0);
+		}
 
 		switch_set_state(&switch_jack_detection, current_jack_type_status);
 		SEC_JACKDEV_DBG("JACK dev detached  \n");			
@@ -414,7 +442,10 @@ static ssize_t select_jack_store(struct device *dev, struct device_attribute *at
 				send_end_irq_token=0;
 			}
 
-			McDrv_Ctrl_MICBIAS2(0);
+			if(!get_recording_status())
+			{
+				McDrv_Ctrl_MICBIAS2(0);
+			}
 
 			current_jack_type_status = SEC_HEADSET_3_POLE_DEVICE;			
 			printk(KERN_INFO "[ JACK_DRIVER (%s,%d) ] 3 pole headset or TV-out attatched : \n", __func__,__LINE__);
@@ -443,7 +474,10 @@ static ssize_t select_jack_store(struct device *dev, struct device_attribute *at
 			}
 			current_jack_type_status = SEC_JACK_NO_DEVICE;
 
-			McDrv_Ctrl_MICBIAS2(0);
+			if(!get_recording_status())
+			{
+				McDrv_Ctrl_MICBIAS2(0);
+			}
 
 			printk(KERN_INFO "[ JACK_DRIVER (%s,%d) ] JACK dev detached  \n",__func__,__LINE__);			
 			break;
@@ -454,6 +488,7 @@ static ssize_t select_jack_store(struct device *dev, struct device_attribute *at
 	}
 
 	switch_set_state(&switch_jack_detection, current_jack_type_status);
+	jack_input_selector(current_jack_type_status);
 
 	return size;
 }
@@ -553,7 +588,8 @@ static int sec_jack_probe(struct platform_device *pdev)
 
 	ret = request_irq(send_end->eint, send_end_irq_handler, IRQF_DISABLED, "sec_headset_send_end", NULL);
 
-	SEC_JACKDEV_DBG("sended isr send=%d, ret=%d", send_end->eint, ret);
+
+	SEC_JACKDEV_DBG("sended isr send=0X%x, ret =%d", send_end->eint, ret);
 	if (ret < 0)
 	{
 		printk(KERN_ERR "SEC HEADSET: Failed to register send/end interrupt.\n");
@@ -571,7 +607,7 @@ static int sec_jack_probe(struct platform_device *pdev)
 	jack_irq_token = 0;
 	ret = request_irq(det_jack->eint, detect_irq_handler, IRQF_DISABLED, "sec_headset_detect", NULL);
 
-	SEC_JACKDEV_DBG("det isr det=%d, ret=%d", det_jack->eint, ret);
+	SEC_JACKDEV_DBG("det isr det=0X%x, ret =%d", det_jack->eint, ret);
 	if (ret < 0) 
 	{
 		printk(KERN_ERR "SEC HEADSET: Failed to register detect interrupt.\n");
@@ -618,40 +654,21 @@ static int sec_jack_remove(struct platform_device *pdev)
 #ifdef CONFIG_PM
 static int sec_jack_suspend(struct platform_device *pdev, pm_message_t state)
 {
-	struct sec_gpio_info *send_end = &hi->port.send_end;
-        struct sec_gpio_info *det_jack = &hi->port.det_jack;
-        
         SEC_JACKDEV_DBG("");
-
-        if (current_jack_type_status == SEC_HEADSET_4_POLE_DEVICE) {
-                disable_irq(send_end->eint);
-                disable_irq_wake(send_end->eint);
-
-                disable_irq(det_jack->eint);
-                disable_irq_wake(det_jack->eint);
-        }
         
-        McDrv_Ctrl_MICBIAS2(0);
+	if(current_jack_type_status == SEC_JACK_NO_DEVICE || current_jack_type_status == SEC_HEADSET_3_POLE_DEVICE)
+	{
+		if(!get_recording_status())
+		{
+			McDrv_Ctrl_MICBIAS2(0);
+		}
+	}
 
 	return 0;
 }
 static int sec_jack_resume(struct platform_device *pdev)
 {
-	struct sec_gpio_info *send_end = &hi->port.send_end;
-        struct sec_gpio_info *det_jack = &hi->port.det_jack;
-        
         SEC_JACKDEV_DBG("");
-
-        if (current_jack_type_status == SEC_HEADSET_4_POLE_DEVICE) {
-                McDrv_Ctrl_MICBIAS2(1);
-
-                enable_irq(send_end->eint);
-                enable_irq_wake(send_end->eint);
-
-                enable_irq(det_jack->eint);
-                enable_irq_wake(det_jack->eint);
-        }
-
 	return 0;
 }
 #else

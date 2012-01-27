@@ -409,16 +409,6 @@ int mmc_switch(struct mmc_card *card, u8 set, u8 index, u8 value)
 	if (err)
 		return err;
 
-	/* Workaround for OMAP3 */
-	/*
-	1. Problem Description
-	  Switching from LS to HS mode by sending CMD6 with a value of 0x03b90100 might fail in some command sequence scenarios.
-	2. Workaround 
-	  The host should not send any commands, including CMD13, for 1mSec after receiving a CMD6 response from the iNAND device.
-	  SanDisk recommends adding a delay of 1msec between the CMD6 switch and sending CMD13. 
-	*/
-	mmc_delay(5);
-	
 	/* Must check status to be sure of no errors */
 	do {
 		err = mmc_send_status(card, &status);

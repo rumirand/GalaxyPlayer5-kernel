@@ -22,9 +22,10 @@
 
 #ifndef MC1N2_CFG_H
 #define MC1N2_CFG_H
+//#define MIC_VOL_ON // yosef added
+#undef MIC_VOL_ON // yosef added
 
 #include "mcdriver.h"
-#include "mc1n2_priv.h"
 
 /*
  * ALSA Version
@@ -926,8 +927,6 @@ static MCDRV_AE_INFO stAeInfo_Rcv = {
 		0x00,0x00,0x00
 	}
 };
-
-#if 0
 static MCDRV_AE_INFO stAeInfo_skype = {
            /* On/Off cut off 500*/
             0x08,
@@ -1112,8 +1111,7 @@ static MCDRV_AE_INFO stAeInfo_qik = {
 			0x00,0x00,0x00
 		}
 
-};
-#endif
+	};
 
 static MCDRV_AE_INFO stAeInfo_Bt = {
   	/* On/Off */
@@ -1434,12 +1432,26 @@ static MCDRV_VOL_INFO stVolInfo_Default = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#ifdef MIC_VOL_ON
+	{1},		/* aswA_Mic1 */
+	{1},		/* aswA_Mic2 */
+	{1},		/* aswA_Mic3 */
+#else
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#endif
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -1474,12 +1486,27 @@ static MCDRV_VOL_INFO stVolInfo_RecognitionOn = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#if 1
 	{1},		/* aswA_Mic1 */
 	{1},		/* aswA_Mic2 */
 	{1},		/* aswA_Mic3 */
+#else
+	{0},		/* aswA_Mic1 */
+	{0},		/* aswA_Mic2 */
+	{0},		/* aswA_Mic3 */
+#endif
+
+#if 1   // yosef added  temporary
 	{-2561, -2561},	/* aswA_Hp */
 	{-1281, -1281},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -1514,9 +1541,15 @@ static MCDRV_VOL_INFO stVolInfo_RecognitionOff = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#ifdef MIC_VOL_ON
+	{1},		/* aswA_Mic1 */
+	{1},		/* aswA_Mic2 */
+	{1},		/* aswA_Mic3 */
+#else
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#endif
 	{0, 0},	/* aswA_Hp */
 	{0, 0},	/* aswA_Sp */
 	{0},		/* aswA_Rc */
@@ -1528,7 +1561,6 @@ static MCDRV_VOL_INFO stVolInfo_RecognitionOff = {
 	{1},		/* aswA_HpGain */
 };
 
-#ifdef CONFIG_VOIP
 static MCDRV_VOL_INFO stVolInfo_VoipOn = {
 	{2785, 2785},	/* aswD_Ad0 */
 	{0},		/* aswD_Ad1 */
@@ -1555,12 +1587,26 @@ static MCDRV_VOL_INFO stVolInfo_VoipOn = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#if 1
 	{1},		/* aswA_Mic1 */
 	{1},		/* aswA_Mic2 */
 	{1},		/* aswA_Mic3 */
+#else
+	{0},		/* aswA_Mic1 */
+	{0},		/* aswA_Mic2 */
+	{0},		/* aswA_Mic3 */
+#endif
+#if 1   // yosef added  temporary
+      /* adjust by park dongyun for voip tunning */
 	{-4353, -4353},	/* aswA_Hp */
 	{10251, -14593},	/* aswA_Sp */
 	{1537},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -1611,7 +1657,6 @@ static MCDRV_VOL_INFO stVolInfo_VoipOff = {
 	{3841},	/* aswA_Mic3Gain */
 	{1},		/* aswA_HpGain */
 };
-#endif
 
 static MCDRV_VOL_INFO stVolInfo_PlaybackRcv = {
 	{0, 0},	/* aswD_Ad0 */
@@ -1639,12 +1684,26 @@ static MCDRV_VOL_INFO stVolInfo_PlaybackRcv = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#ifdef MIC_VOL_ON
+	{1},		/* aswA_Mic1 */
+	{1},		/* aswA_Mic2 */
+	{1},		/* aswA_Mic3 */
+#else
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#endif
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1537},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -1679,12 +1738,26 @@ static MCDRV_VOL_INFO stVolInfo_PlaybackSpk = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#ifdef MIC_VOL_ON
+	{1},		/* aswA_Mic1 */
+	{1},		/* aswA_Mic2 */
+	{1},		/* aswA_Mic3 */
+#else
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#endif
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -1719,12 +1792,26 @@ static MCDRV_VOL_INFO stVolInfo_PlaybackHp = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#ifdef MIC_VOL_ON
+	{1},		/* aswA_Mic1 */
+	{1},		/* aswA_Mic2 */
+	{1},		/* aswA_Mic3 */
+#else
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#endif
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -1759,12 +1846,26 @@ static MCDRV_VOL_INFO stVolInfo_PlaybackDual = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#ifdef MIC_VOL_ON
+	{1},		/* aswA_Mic1 */
+	{1},		/* aswA_Mic2 */
+	{1},		/* aswA_Mic3 */
+#else
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#endif
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -1802,9 +1903,17 @@ static MCDRV_VOL_INFO stVolInfo_PlaybackDock = {
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -1839,12 +1948,26 @@ static MCDRV_VOL_INFO stVolInfo_PlaybackRingSpk = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#ifdef MIC_VOL_ON
+	{1},		/* aswA_Mic1 */
+	{1},		/* aswA_Mic2 */
+	{1},		/* aswA_Mic3 */
+#else
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#endif
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -1879,12 +2002,26 @@ static MCDRV_VOL_INFO stVolInfo_PlaybackRingHp = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#ifdef MIC_VOL_ON
+	{1},		/* aswA_Mic1 */
+	{1},		/* aswA_Mic2 */
+	{1},		/* aswA_Mic3 */
+#else
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#endif
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -1919,12 +2056,26 @@ static MCDRV_VOL_INFO stVolInfo_PlaybackRingDual = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#ifdef MIC_VOL_ON
+	{1},		/* aswA_Mic1 */
+	{1},		/* aswA_Mic2 */
+	{1},		/* aswA_Mic3 */
+#else
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#endif
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -2093,7 +2244,6 @@ static MCDRV_VOL_INFO stVolInfo_CallBt = {
 	{1},		/* aswA_HpGain */
 };
 
-#if 0
 static MCDRV_VOL_INFO stVolInfo_FmHp = {
 	{1, 1},	/* aswD_Ad0 */
 	{0},		/* aswD_Ad1 */
@@ -2123,9 +2273,17 @@ static MCDRV_VOL_INFO stVolInfo_FmHp = {
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -2163,9 +2321,16 @@ static MCDRV_VOL_INFO stVolInfo_FmSpk = {
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -2173,7 +2338,6 @@ static MCDRV_VOL_INFO stVolInfo_FmSpk = {
 	{3841},	/* aswA_Mic3Gain */
 	{1},		/* aswA_HpGain */
 };
-#endif
 
 static MCDRV_VOL_INFO stVolInfo_FmMixHp = {
 	{1, 1},	/* aswD_Ad0 */
@@ -2204,9 +2368,17 @@ static MCDRV_VOL_INFO stVolInfo_FmMixHp = {
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -2244,9 +2416,17 @@ static MCDRV_VOL_INFO stVolInfo_FmMixSpk = {
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */
@@ -2281,12 +2461,26 @@ static MCDRV_VOL_INFO stVolInfo_FmMixDual = {
 	{0},		/* aswA_Ad1 */
 	{0, 0},	/* aswA_Lin1 */
 	{0, 0},	/* aswA_Lin2 */
+#ifdef MIC_VOL_ON
+	{1},		/* aswA_Mic1 */
+	{1},		/* aswA_Mic2 */
+	{1},		/* aswA_Mic3 */
+#else
 	{0},		/* aswA_Mic1 */
 	{0},		/* aswA_Mic2 */
 	{0},		/* aswA_Mic3 */
+#endif
+#if 1   // yosef added  temporary
 	{1, 1},	/* aswA_Hp */
 	{1, 1},	/* aswA_Sp */
 	{1},		/* aswA_Rc */
+#else
+	{0, 0},	/* aswA_Hp */
+	{0, 0},	/* aswA_Sp */
+	{0},		/* aswA_Rc */
+
+#endif
+
 	{1, 1},	/* aswA_Lout1 */
 	{0, 0},	/* aswA_Lout2 */
 	{3841},	/* aswA_Mic1Gain */

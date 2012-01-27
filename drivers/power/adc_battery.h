@@ -86,7 +86,7 @@ const int battery_table[][3] =
 	{  0, 3400, 1779},
 };
 #endif
-const int ATL_battery_table[][3] = 
+const int battery_table[][3] = 
 {
 	/* %,    V,  adc*/
 	{100, 4130, 2779},
@@ -111,34 +111,6 @@ const int ATL_battery_table[][3] =
 	{  5, 3500, 1897},
 	{  3, 3440, 1830},
 	{  1, 3410, 1765},
-	{  0, 3400, 1762},
-};
-
-const int BYD_battery_table[][3] = 
-{
-	/* %,    V,  adc*/
-	{100, 4130, 2779},
-	{ 95, 4120, 2672},
-	{ 90, 4070, 2627},
-	{ 85, 4040, 2568},
-	{ 80, 4000, 2511},
-	{ 75, 3970, 2476},
-	{ 70, 3940, 2434},
-	{ 65, 3910, 2393},
-	{ 60, 3870, 2340},
-	{ 55, 3840, 2308},
-	{ 50, 3820, 2278},
-	{ 45, 3790, 2251},
-	{ 40, 3790, 2245},
-	{ 35, 3780, 2210},
-	{ 30, 3760, 2183},
-	{ 25, 3750, 2180},
-	{ 20, 3720, 2141},
-	{ 15, 3710, 2120},
-	{ 10, 3680, 2072},
-	{  5, 3660, 2061},
-	{  3, 3600, 1977},
-	{  1, 3480, 1845},
 	{  0, 3400, 1762},
 };
 
@@ -192,36 +164,6 @@ const int temper_table[][2] =  {
 	{  39,      750 },
 };
 
-/*
- * BYD Battery Temperature Table
- */
-const int BYD_temper_table[][2] =  {
-	/* ADC, Temperature (C) */
-	{ 1637,     -50 },
-	{ 1545,       0 },
-	{ 1474,		 30 },
-	{ 1412,	     50 },
-	{ 1321,		100 },
-	{ 1192,		150 },
-	{ 1033,		200 },
-	{ 906,		250 },
-	{ 758,		300 },
-	{ 612,		350 },
-	{ 538,      400 },
-	{ 364,      450 },
-	{ 312,      500 },
-	{ 277,      550 },
-	{ 265,      600 },
-	{ 190,      650 },
-};
-
-typedef enum s3c_battery_type {
-	S3C_BATTERY_TYPE_NONE = 0,
-	S3C_BATTERY_TYPE_BYD,
-	S3C_BATTERY_TYPE_ATL,
-}battery_type;
-
-#define BATTERY_TYPE_MARGIN		300
 
 #define TEMP_IDX_ZERO_CELSIUS   2
 
@@ -238,20 +180,13 @@ typedef enum s3c_battery_type {
 // [ VENTURI NEW SPEC. by jmin
 // 	 NORMAL => HIGH_BLOCK: 65, HIGH_RECOV: 55, LOW_BLOCK: 0, LOW_BLOCK: 3
 //   EVENT => not used..
-#define TEMP_ATL_HIGH_BLOCK			63 //temper_table[TEMP_IDX_ZERO_CELSIUS+45][0]
-#define TEMP_ATL_HIGH_RECOVER		85 //temper_table[TEMP_IDX_ZERO_CELSIUS+43][0]
-#define TEMP_ATL_LOW_BLOCK			659 //temper_table[TEMP_IDX_ZERO_CELSIUS+0][0]
-#define TEMP_ATL_LOW_RECOVER		585 //temper_table[TEMP_IDX_ZERO_CELSIUS+3][0]
+#define TEMP_HIGH_BLOCK			63 //temper_table[TEMP_IDX_ZERO_CELSIUS+45][0]
+#define TEMP_HIGH_RECOVER		85 //temper_table[TEMP_IDX_ZERO_CELSIUS+43][0]
+#define TEMP_LOW_BLOCK			659 //temper_table[TEMP_IDX_ZERO_CELSIUS+0][0]
+#define TEMP_LOW_RECOVER		585 //temper_table[TEMP_IDX_ZERO_CELSIUS+3][0]
 
-#define TEMP_ATL_EVENT_HIGH_BLOCK	63 //(65')    224//(63') // It is not in table. temper_table[TEMP_IDX_ZERO_CELSIUS+53+20][0]
-#define TEMP_ATL_EVENT_HIGH_RECOVER	85 // using video playback   //temper_table[TEMP_IDX_ZERO_CELSIUS+50][0]
-
-#define TEMP_BYD_EVENT_HIGH_BLOCK		190		/* 65'C */
-#define TEMP_BYD_EVENT_HIGH_RECOVER		286		/* 54'C */
-#define TEMP_BYD_HIGH_BLOCK			190		/* 65'C */
-#define TEMP_BYD_HIGH_RECOVER		286		/* 54'C */
-#define TEMP_BYD_LOW_BLOCK			1545		/* 0'C */
-#define TEMP_BYD_LOW_RECOVER		1474		/* 3'C */
+#define TEMP_EVENT_HIGH_BLOCK	63 //(65')    224//(63') // It is not in table. temper_table[TEMP_IDX_ZERO_CELSIUS+53+20][0]
+#define TEMP_EVENT_HIGH_RECOVER	85 // using video playback   //temper_table[TEMP_IDX_ZERO_CELSIUS+50][0]
 // ]
 
 
@@ -264,7 +199,6 @@ typedef enum s3c_adc_channel {
 	S3C_ADC_CHG_CURRENT = 2,
 	S3C_ADC_EAR = 3,
 	S3C_ADC_TEMPERATURE = 4,
-	S3C_ADC_NTC = 6,
 	ENDOFADC
 } adc_channel_type;
 

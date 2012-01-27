@@ -24,7 +24,7 @@
 #define MC1N2_H
 
 #include "mcdriver.h"
-#include "mc1n2_priv.h"
+
 /*
  * dai: set_sysclk
  */
@@ -85,28 +85,28 @@ struct mc1n2_ctrl_args {
 /*
  * MC1N2_IOCTL_NOTIFY dCmd definitions
  */
-#define MCDRV_NOTIFY_CALL_START         0x00000000
-#define MCDRV_NOTIFY_CALL_STOP          0x00000001
-#define MCDRV_NOTIFY_MEDIA_PLAY_START   0x00000002
-#define MCDRV_NOTIFY_MEDIA_PLAY_STOP    0x00000003
-#define MCDRV_NOTIFY_FM_PLAY_START      0x00000004
-#define MCDRV_NOTIFY_FM_PLAY_STOP       0x00000005
-#define MCDRV_NOTIFY_BT_SCO_ENABLE      0x00000006
-#define MCDRV_NOTIFY_BT_SCO_DISABLE     0x00000007
-#define MCDRV_NOTIFY_VOICE_REC_START    0x00000008
-#define MCDRV_NOTIFY_VOICE_REC_STOP     0x00000009
-#define MCDRV_NOTIFY_HDMI_START         0x0000000A
-#define MCDRV_NOTIFY_HDMI_STOP          0x0000000B
+#define MCDRV_NOTIFY_CALL_START		0x00000000
+#define MCDRV_NOTIFY_CALL_STOP		0x00000001
+#define MCDRV_NOTIFY_MEDIA_PLAY_START	0x00000002
+#define MCDRV_NOTIFY_MEDIA_PLAY_STOP	0x00000003
+#define MCDRV_NOTIFY_FM_PLAY_START	0x00000004
+#define MCDRV_NOTIFY_FM_PLAY_STOP	0x00000005
+#define MCDRV_NOTIFY_BT_SCO_ENABLE	0x00000006
+#define MCDRV_NOTIFY_BT_SCO_DISABLE	0x00000007
+#define MCDRV_NOTIFY_VOICE_REC_START	0x00000008
+#define MCDRV_NOTIFY_VOICE_REC_STOP		0x00000009
+#define MCDRV_NOTIFY_HDMI_START	0x0000000A
+#define MCDRV_NOTIFY_HDMI_STOP	0x0000000B
 
 /*
  * Setup parameters
  */
 struct mc1n2_setup {
-        MCDRV_INIT_INFO init;
-        unsigned char pcm_extend[IOPORT_NUM];
-        unsigned char pcm_hiz_redge[IOPORT_NUM];
-        unsigned char pcm_hperiod[IOPORT_NUM];
-        unsigned char slot[IOPORT_NUM][SNDRV_PCM_STREAM_LAST+1][DIO_CHANNELS];
+	MCDRV_INIT_INFO init;
+	unsigned char pcm_extend[IOPORT_NUM];
+	unsigned char pcm_hiz_redge[IOPORT_NUM];
+	unsigned char pcm_hperiod[IOPORT_NUM];
+	unsigned char slot[IOPORT_NUM][SNDRV_PCM_STREAM_LAST+1][DIO_CHANNELS];
 };
 
 /*
@@ -116,69 +116,86 @@ extern struct snd_soc_dai mc1n2_dai[];
 extern struct snd_soc_codec_device soc_codec_dev_mc1n2;
 
 
+#define CONFIG_FMRADIO_CODEC_GAIN
+
+#ifdef CONFIG_FMRADIO_CODEC_GAIN
+unsigned int McDrv_Ctrl_fm(unsigned int volume);
+unsigned int McDrv_Ctrl_fm_mute(void);
+unsigned int McDrv_Ctrl_fm_recovery(void);
+unsigned char McDrv_Ctrl_get_fm_vol(void);
+#endif
+
+/* venturi add by park dong yun move static function to header for voip controll */
+struct snd_soc_codec *mc1n2_get_codec_data(void);
+int mc1n2_write_reg(struct snd_soc_codec *codec,unsigned int reg, unsigned int value);
+unsigned int mc1n2_read_reg(struct snd_soc_codec *codec, unsigned int reg);
+int mc1n2_set_path(struct snd_soc_codec *codec, MCDRV_PATH_INFO *info);
+void 	McDrv_Ctrl_DNG_ctrl(int en , int path, int threshold);
+void mc1n2_set_analog_volume_hp(int index);
+void mc1n2_set_analog_volume_spk(int index);
+
+
+
 /*
  * Driver private data structure
  */
+
+
 #define MC1N2_N_PATH_CHANNELS 19
 
 struct mc1n2_port_params {
-        UINT8 rate;
-        UINT8 bits[SNDRV_PCM_STREAM_LAST+1];
-        UINT8 pcm_mono[SNDRV_PCM_STREAM_LAST+1];
-        UINT8 pcm_order[SNDRV_PCM_STREAM_LAST+1];
-        UINT8 pcm_law[SNDRV_PCM_STREAM_LAST+1];
-        UINT8 master;
-        UINT8 inv;
-        UINT8 format;
-        UINT8 bckfs;
-        UINT8 pcm_clkdown;
-        UINT8 channels;
-        UINT8 stream;                     /* bit0: Playback, bit1: Capture */
-        UINT8 dir[MC1N2_N_PATH_CHANNELS]; /* path settings for DIR */
-        MCDRV_CHANNEL dit;                /* path settings for DIT */
+	UINT8 rate;
+	UINT8 bits[SNDRV_PCM_STREAM_LAST+1];
+	UINT8 pcm_mono[SNDRV_PCM_STREAM_LAST+1];
+	UINT8 pcm_order[SNDRV_PCM_STREAM_LAST+1];
+	UINT8 pcm_law[SNDRV_PCM_STREAM_LAST+1];
+	UINT8 master;
+	UINT8 inv;
+	UINT8 format;
+	UINT8 bckfs;
+	UINT8 pcm_clkdown;
+	UINT8 channels;
+	UINT8 stream;                     /* bit0: Playback, bit1: Capture */
+	UINT8 dir[MC1N2_N_PATH_CHANNELS]; /* path settings for DIR */
+	MCDRV_CHANNEL dit;                /* path settings for DIT */
 };
 
 struct mc1n2_data {
-        struct mutex mutex;
-        struct mc1n2_setup setup;
-        struct mc1n2_port_params port[IOPORT_NUM];
-        struct snd_hwdep *hwdep;
-        int clk_update;
-        MCDRV_PATH_INFO path_store;
-        MCDRV_VOL_INFO vol_store;
-        MCDRV_DIO_INFO dio_store;
-        MCDRV_DAC_INFO dac_store;
-        MCDRV_ADC_INFO adc_store;
-        MCDRV_SP_INFO sp_store;
-        MCDRV_DNG_INFO dng_store;
-        MCDRV_SYSEQ_INFO syseq_store;
-        MCDRV_AE_INFO ae_store;
-        MCDRV_PDM_INFO pdm_store;
-        int config_flag;
-        int playback_path;
-        int call_path;
-        int mic_path;
-        int fmr_path;
-        int codec_tuning;
-        int codec_status;
-        u16 rcv_vol_l;
-        u16 rcv_vol_r;
-        u16 sp_vol_l;
-        u16 sp_vol_r;
-        u16 hp_vol_l;
-        u16 hp_vol_r;
-        u16 ad_vol_l;
-        u16 ad_vol_r;
-        u16 da_vol_l;
-        u16 da_mas_vol;
-        u16 da_dit_vol;
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-        u16 analog_vol;
-        u16 music_vol;
-#endif
-#ifdef CONFIG_FMRADIO_CODEC_GAIN
-        u16 fm_volume;
-#endif
+	struct mutex mutex;
+	struct mc1n2_setup setup;
+	struct mc1n2_port_params port[IOPORT_NUM];
+	struct snd_hwdep *hwdep;
+	int clk_update;
+	MCDRV_PATH_INFO path_store;
+	MCDRV_VOL_INFO vol_store;
+	MCDRV_DIO_INFO dio_store;
+	MCDRV_DAC_INFO dac_store;
+	MCDRV_ADC_INFO adc_store;
+	MCDRV_SP_INFO sp_store;
+	MCDRV_DNG_INFO dng_store;
+	MCDRV_SYSEQ_INFO syseq_store;
+	MCDRV_AE_INFO ae_store;
+	MCDRV_PDM_INFO pdm_store;
+	int config_flag;
+	int playback_path;
+	int call_path;
+	int mic_path;
+	int fmr_path;
+	int codec_tuning;
+	int codec_status;
+	u16 rcv_vol_l;
+	u16 rcv_vol_r;
+	u16 sp_vol_l;
+	u16 sp_vol_r;
+	u16 hp_vol_l;
+	u16 hp_vol_r;
+	u16 ad_vol_l;
+	u16 ad_vol_r;
+      u16 da_vol_l;
+      u16 da_mas_vol;
+      u16 da_dit_vol;
+      u16 analog_vol;
 };
+
 
 #endif

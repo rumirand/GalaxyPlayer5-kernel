@@ -173,12 +173,12 @@ static struct android_usb_product usb_products[] = {
 	},
 	{
 		.product_id	= SAMSUNG_UMS_PRODUCT_ID,
-		.num_functions	= ARRAY_SIZE(usb_functions_ums_acm),
-		.functions	= usb_functions_ums_acm,
-		.bDeviceClass	= 0xEF,
-		.bDeviceSubClass= 0x02,
-		.bDeviceProtocol= 0x01,
-		.s		= ANDROID_KIES_CONFIG_STRING,
+		.num_functions	= ARRAY_SIZE(usb_functions_ums),
+		.functions	= usb_functions_ums,
+		.bDeviceClass	= USB_CLASS_PER_INTERFACE,
+		.bDeviceSubClass= 0,
+		.bDeviceProtocol= 0,
+		.s		= ANDROID_UMS_CONFIG_STRING,
 		.mode		= USBSTATUS_UMS,
 	},
 #      ifdef CONFIG_USB_ANDROID_RNDIS
@@ -354,8 +354,6 @@ static struct android_usb_platform_data android_usb_pdata = {
 	.manufacturer_name	= "Samsung Electronics",
 #if defined(CONFIG_VENTURI_KOR) // Usys_sadang KH21
 	.product_name		= "YP-GB70",
-#elif defined(CONFIG_VENTURI_EUR_DMB)
-	.product_name		= "YP-G70CWB",
 #elif CONFIG_MACH_VENTURI
 	.product_name		= "YP-G70",
 #elif defined(CONFIG_ARIES_KOR) // Usys_sadang KH21
@@ -444,16 +442,13 @@ struct platform_device s3c_device_android_usb = {
 };
 
 static struct usb_mass_storage_platform_data ums_pdata = {
-#if defined(CONFIG_VENTURI_KOR) || defined(CONFIG_ARIES_KOR)
-	.vendor			= "SAMSUNG",
+	.vendor			= "Android",
 #if defined(CONFIG_VENTURI_KOR)		//VenturiGB_Usys_jypark 2011.08.20 - change ums_data product string [[
 	.product		= "YP-GB70",
 #elif defined(CONFIG_ARIES_KOR)
 	.product		= "YP-GB1",		//VenturiGB_Usys_jypark 2011.08.20 - change ums_data product string ]]
-#endif
 #else
-        .vendor			= "Android",
-        .product		= "UMS Composite",
+	.product		= "UMS Composite",
 #endif
 	.release		= 1,
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE

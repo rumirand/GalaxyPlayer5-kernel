@@ -36,6 +36,11 @@
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/tlv.h>
+#include "mc1n2.h"
+#include "mc1n2_priv.h"
+#include "mc1n2_cfg.h"
+#include "mc1n2_voip.h"
+
 #include <linux/file.h>
 #include <asm/io.h>
 #include <asm/gpio.h> 
@@ -44,101 +49,94 @@
 #include <mach/regs-clock.h> 
 #include <mach/gpio.h> 
 
-#include "mc1n2.h"
-#include "mc1n2_priv.h"
-#include "mc1n2_cfg.h"
-#include "mcresctrl.h"
+#include "mcresctrl.h"  // yosef added for test Mic2
 
 #define MC1N2_DRIVER_VERSION "0.9.8"
 
-unsigned char fmradio_state;
-unsigned char fmradio_closed;
+//#define LINE_OUT_TEST  // yosef added for USB Line out test
+// #define RECEIVER_TEST  // yosef added for receiver test
+#undef RECEIVER_TEST
 
-int voice_recognition_state;
+#define VOL_ADJUST_TEST    //VOL_ADJUST_TEST
 
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-int music_start_flag;
+unsigned char fm_volume_backup = 11;
+unsigned char fmradio_state = 0;
+unsigned char fmradio_closed = 0;
+unsigned char record_state = 0;
+EXPORT_SYMBOL(fmradio_state);
+EXPORT_SYMBOL(fm_volume_backup);
+
+int lastUpdate_by_set_path_playback=0;
+int lastUpdate_by_set_path_mic=0;
+// VenturiGB_Usys_jypark 2011.08.08 - DMB [[
+#ifdef CONFIG_TDMB
+int isDMBActivate=0;
 #endif
-#ifdef CONFIG_VOIP
-int voip_status;
-#endif
+// VenturiGB_Usys_jypark 2011.08.08 - DMB ]]
 
-/* For ear-jack control(MIC-Bias) */
-extern short int get_headset_status(void);
+extern short int get_headset_status(void); // For ear-jack control(MIC-Bias)
 
 // ========================= EUR volume table 100DB SPL =============================
-#define HEADPHONE_VOL_EUR               54      // 0~63
-#define HEADPHONE_VOL_FM_EUR            46      // 0~63
-#define DUAL_VOL_FOR_HEADPHONE_EUR      22      // 0~63
-#define MIC2_GAIN_TEST_EUR              2       // default 0: ear mic 0=15db, 1=20db,2=25db,3=30db
-#define MC1N2_MIC2_ADC_VOL_EUR          220     // default 190:mic2 volume Left  0~239
-#define MIC1_GAIN_REC_EUR               1
-#define MC1N2_MIC1_ADC_VOL_REC_EUR      202
-
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-/*                                           0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 */
-int gAnalVolHpIndex_eur[MUSIC_VOL_LEVEL] = {43,43,43,43,43,43,43,43,43,43,43,43,43,43,43,43,43,44,45,46,47,48,49,51,54,54,54,54,54,54,54};
+#ifdef VOL_ADJUST_TEST
+//#define HEADPHONE_VOL_EUR  47   //  0~63
+#define HEADPHONE_VOL_FM_EUR  46   //  0~63
+#define DUAL_VOL_FOR_HEADPHONE_EUR 22   //  0~63
+#define MIC2_GAIN_TEST_EUR 2  //default 0: ear mic 0=15db, 1=20db,2=25db,3=30db
+#define MC1N2_MIC2_ADC_VOL_EUR 220  //default 190:mic2 volume Left  0~239
+#define MIC1_GAIN_REC_EUR 1
+#define MC1N2_MIC1_ADC_VOL_REC_EUR 202
 #endif
+//                                              0  1  2   3  4  5  6  7   8   9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30  
+/* update by park dong yun SPL Speration is controled by Platform Digital Table 
+   so we use same volume table with 107 SPL Leve add 2 DB Level */
+// int gAnalVolHpIndex_eur      [31] ={36,36,36,36,36,36,36,36,36,36,36,36,36,36,36,36,36,37,38,39,40,41,42,43,45,47,47,47,47,47,47};
+int gAnalVolHpIndex_eur       [31] ={43,43,43,43,43,43,43,43,43,43,43,43,43,43,43,43,43,44,45,46,47,48,49,51,54,54,54,54,54,54,54};
 
-/* ========================= KOREA  volume table 107DB SPL ============================= */
-#define HEADPHONE_VOL_KOR               55      // 0~63
-#define HEADPHONE_VOL_FM_KOR            54      // 0~63
-#define DUAL_VOL_FOR_HEADPHONE_KOR      26      // 0~63
-#define MIC2_GAIN_TEST_KOR              3       // default 0: ear mic 0=15db, 1=20db,2=25db,3=30db
-#define MC1N2_MIC2_ADC_VOL_KOR          228     // default 190:mic2 volume Left  0~239
-#define MIC1_GAIN_REC_KOR               2
-#define MC1N2_MIC1_ADC_VOL_REC_KOR      194
-
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-/*                                           0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 */ 
-int gAnalVolHpIndex_kor[MUSIC_VOL_LEVEL] = {41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,41,43,45,48,51,54};
+// ========================= KOREA  volume table 107DB SPL =============================
+#ifdef VOL_ADJUST_TEST
+// VenturiGB_Usys_jypark 2011.08.08 - DMB [[
+#ifdef CONFIG_TDMB
+#define HEADPHONE_VOL_KOR  55  
 #endif
-
-/* ========================= COMMON value  ============================= */
-#define SPEAKER_VOL                     53      // 0~63
-#define SPEAKER_VOL_FM                  44      // 0~63
-#define RCV_VOL                         63      // 0~63
-#define DUAL_VOL_FOR_SPEAKER            52      // 0~63
-
-#define MIC1_GAIN_TEST                  3       // default 0: main mic 0=15db, 1=20db,2=25db,3=30db
-#define MC1N2_MIC1_ADC_VOL         239     // default 190:mic1 volume Left  0~239
-#define FM_ADC_VOL                      200     // default 96:fm radio volume Left  0~239
-
-
-unsigned int gMicGain = MIC1_GAIN_REC_KOR;
-unsigned int gMicADC = MC1N2_MIC1_ADC_VOL_REC_KOR;
-
-int g_HEADPHONE_VOL = HEADPHONE_VOL_KOR;
-int g_HEADPHONE_VOL_FM = HEADPHONE_VOL_FM_KOR;
-int g_DUAL_VOL_FOR_HEADPHONE = DUAL_VOL_FOR_HEADPHONE_KOR;
-int g_MIC2_GAIN_TEST = MIC2_GAIN_TEST_KOR;
-int g_MC1N2_MIC2_ADC_VOL = MC1N2_MIC2_ADC_VOL_KOR;
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-int *gAnalVolHpIndex = gAnalVolHpIndex_kor;
+// VenturiGB_Usys_jypark 2011.08.08 - DMB ]]
+#define HEADPHONE_VOL_FM_KOR  54   //  0~63
+#define DUAL_VOL_FOR_HEADPHONE_KOR 26   //  0~63
+#define MIC2_GAIN_TEST_KOR 3  //default 0: ear mic 0=15db, 1=20db,2=25db,3=30db
+#define MC1N2_MIC2_ADC_VOL_KOR 228  //default 190:mic2 volume Left  0~239
+#define MIC1_GAIN_REC_KOR 1
+#define MC1N2_MIC1_ADC_VOL_REC_KOR 190
 #endif
+//                                              0  1  2   3  4  5  6   7  8   9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30  
+int gAnalVolHpIndex_kor       [31] ={43,43,43,43,43,43,43,43,43,43,43,43,43,43,43,43,43,44,45,46,47,48,49,51,55,55,55,55,55,55,55};
 
-#ifdef CONFIG_VOIP
-/* VoIP gain */
-#define MC1N2_VOIP_SPEAKER_GAIN                 55
-#define MC1N2_VOIP_RECEIVER_GAIN                63
-#define MC1N2_VOIP_HEADPHONE_GAIN               44
 
-#define MC1N2_VOIP_SPEAKER_MIC_GAIN             3
-#define MC1N2_VOIP_SPEAKER_MIC_ADC              177
+// ========================= COMMON value  =============================
+#define SPEAKER_VOL  52    // 0~63
+#define SPEAKER_VOL_FM  44    // 0~63
+#define RCV_VOL  63 //  0~63
+#define DUAL_VOL_FOR_SPEAKER 52   //  0~63
 
-#define MC1N2_VOIP_HEADSET_MIC_GAIN             3
-#define MC1N2_VOIP_HEADSET_ADC_GAIN             209
-#define MC1N2_VOIP_HEADSET_DIT                  192
+//GB Upgraded : 2->3, 218->239
+#define MIC1_GAIN_TEST 3  //default 0: main mic 0=15db, 1=20db,2=25db,3=30db
+#define MC1N2_MIC1_ADC_VOL 239  //default 190:mic1 volume Left  0~239
+#define FM_ADC_VOL	200  // default 96:fm radio volume Left  0~239
 
-#define MC1N2_VOIP_SPEAKER_DAC                  192
-#define MC1N2_VOIP_SPEAKER_DAC_MASTER           192
-#endif
+//                                        0  1   2  3  4   5   6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30  
+int gAnalVolSpeakerIndex [31] ={40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,41,42,43,44,45,46,48,50,52,52,52,52,52,53};
 
+int g_HEADPHONE_VOL_FM=HEADPHONE_VOL_FM_KOR;
+int g_DUAL_VOL_FOR_HEADPHONE=DUAL_VOL_FOR_HEADPHONE_KOR;
+int g_MIC2_GAIN_TEST=MIC2_GAIN_TEST_KOR;
+int g_MC1N2_MIC2_ADC_VOL =MC1N2_MIC2_ADC_VOL_KOR;
+int *gAnalVolHpIndex=&gAnalVolHpIndex_kor;
+
+
+/*------------------------TUNING------------------------*/
+//#define MP3_SNDCONFIG  // VENTURI PROJECT UPDATE BY LEE SEUNG WOOK
 #ifdef MP3_SNDCONFIG
 #include <linux/string.h>
 #include <linux/kernel.h>
-
-int isLoadSoundConfig = 1;
+int isLoadSoundConfig=1;
 char *token;
 char *last;
 
@@ -146,30 +144,10 @@ unsigned int gMicGainTest = MIC1_GAIN_TEST;
 unsigned int gMicADCTest = MC1N2_MIC1_ADC_VOL;
 #endif 
 
-#ifdef LOAD_VOIP_CONFIG 
-#include <linux/string.h>
-#include <linux/kernel.h>
-
-int isLoadVoipConfig = 1;
-char *token;
-char *last;
-
-/* playback */
-int gSpeakerGain;
-int gReceiverGain;
-int gHeadPhoneGain;
-
-/* mic */ 
-int gSpeaker_mic_gain;
-int gSpeaker_mic_adc;
-int gHeadPhone_mic_gain;
-int gHeadPhone_mic_adc;
-int gHeadPhone_mic_dit;
-
-int gSpeakerGainDac;
-int gSpeakerDacMaster;
-int gSpeakerDitVol;
-#endif
+unsigned int gMicGain = MIC1_GAIN_REC_KOR;
+unsigned int gMicADC	= MC1N2_MIC1_ADC_VOL_REC_KOR;
+unsigned int gPathNum;
+/*------------------------TUNING------------------------*/
 
 
 #define MC1N2_NAME "mc1n2"
@@ -190,27 +168,35 @@ int gSpeakerDitVol;
 #define MC1N2_HW_ID_AA 0x78
 #define MC1N2_HW_ID_AB 0x79
 
-#define mc1n2_is_in_playback(p) ((p)->stream & (1 << SNDRV_PCM_STREAM_PLAYBACK))
-#define mc1n2_is_in_capture(p)  ((p)->stream & (1 << SNDRV_PCM_STREAM_CAPTURE))
+#define KEY_KERN_DEBUG	
 
 static UINT8 mc1n2_hwid;
-static struct snd_soc_codec *mc1n2_codec;
+unsigned char HP_SPK_CHG = 0;
 
+#define mc1n2_is_in_playback(p) ((p)->stream & (1 << SNDRV_PCM_STREAM_PLAYBACK))
+#define mc1n2_is_in_capture(p)  ((p)->stream & (1 << SNDRV_PCM_STREAM_CAPTURE))
+int audio_power(int en);
+
+
+int codec_using = 0;
+EXPORT_SYMBOL(codec_using);
+
+static struct snd_soc_codec *mc1n2_codec;
 
 struct snd_soc_codec *mc1n2_get_codec_data(void)
 {
-        return mc1n2_codec;
+	return mc1n2_codec;
 }
 
 static void mc1n2_set_codec_data(struct snd_soc_codec *codec)
 {
-        mc1n2_codec = codec;
+	mc1n2_codec = codec;
 }
 
 /* deliver i2c access to machdep */
 struct i2c_client *mc1n2_get_i2c_client(void)
 {
-        return mc1n2_codec->control_data;
+	return mc1n2_codec->control_data;
 }
 
 /*
@@ -218,250 +204,174 @@ struct i2c_client *mc1n2_get_i2c_client(void)
  */
 /* SRC_RATE settings @ 73728000Hz (ideal PLL output) */
 static int mc1n2_src_rate[][SNDRV_PCM_STREAM_LAST+1] = {
-        /* DIR, DIT */
-        {32768, 4096},                  /* MCDRV_FS_48000 */
-        {30106, 4458},                  /* MCDRV_FS_44100 */
-        {21845, 6144},                  /* MCDRV_FS_32000 */
-        {0, 0},                         /* N/A */
-        {0, 0},                         /* N/A */
-        {15053, 8916},                  /* MCDRV_FS_22050 */
-        {10923, 12288},                 /* MCDRV_FS_16000 */
-        {0, 0},                         /* N/A */
-        {0, 0},                         /* N/A */
-        {7526, 17833},                  /* MCDRV_FS_11025 */
-        {5461, 24576},                  /* MCDRV_FS_8000 */
+	/* DIR, DIT */
+	{32768, 4096},                  /* MCDRV_FS_48000 */
+	{30106, 4458},                  /* MCDRV_FS_44100 */
+	{21845, 6144},                  /* MCDRV_FS_32000 */
+	{0, 0},                         /* N/A */
+	{0, 0},                         /* N/A */
+	{15053, 8916},                  /* MCDRV_FS_22050 */
+	{10923, 12288},                 /* MCDRV_FS_16000 */
+	{0, 0},                         /* N/A */
+	{0, 0},                         /* N/A */
+	{7526, 17833},                  /* MCDRV_FS_11025 */
+	{5461, 24576},                  /* MCDRV_FS_8000 */
 };
 
 #define mc1n2_fs_to_srcrate(rate,dir) mc1n2_src_rate[(rate)][(dir)];
 
 
-#ifdef MP3_SNDCONFIG
+#ifdef MP3_SNDCONFIG // VENTURI PROJECT  UPDATE BY LEE SEUNG WOOK FOR SOUND TUNNING 
 int ReadSoundConfigFile(char *Filename, int StartPos)
 {
-        struct file *filp;
-        char *Buffer;
-        mm_segment_t oldfs;
-        int BytesRead;
+	struct file 	*filp;
+    char * Buffer;
+	mm_segment_t	oldfs;
+	int		BytesRead;
 
-        Buffer = kmalloc(256, GFP_KERNEL);
-        if (!Buffer) {
-                CODECDBG("Buffer kmalloc error");
-                return -1;
-        }
+	Buffer = kmalloc(256,GFP_KERNEL);
+	if (Buffer==NULL) 
+		return-1;
+	
+	filp = filp_open(Filename,00,O_RDONLY);
+	if (IS_ERR(filp)||(filp==NULL))
+	{
+        CODECDBG("ReadSoundconfig open err");
+		return -1;  /* Or do something else */
+    }
 
-        filp = filp_open(Filename, 00, O_RDONLY);
-        if (IS_ERR(filp) || !filp) {
-                CODECDBG("ReadSoundconfig open error");
-                return -1;
-        }
+	if (filp->f_op->read==NULL)
+	{
+           CODECDBG("ReadSoundconfig open read error");
+		return-1;  /* File(system) doesn't allow reads */
+       }
 
-        if (!filp->f_op->read) {
-                CODECDBG("ReadSoundconfig open read error");
-                return -1;  /* File(system) doesn't allow reads */
-        }
+	/* Now read 4096 bytes from postion "StartPos" */
+	filp->f_pos = StartPos;
+	oldfs = get_fs();
+	set_fs(KERNEL_DS);
+	BytesRead = filp->f_op->read(filp,Buffer,256,&filp->f_pos);
+	set_fs(oldfs);
 
-        /* Now read 4096 bytes from postion "StartPos" */
-        filp->f_pos = StartPos;
-        
-        oldfs = get_fs();
-        set_fs(KERNEL_DS);
-        
-        BytesRead = filp->f_op->read(filp,Buffer,256,&filp->f_pos);
-        set_fs(oldfs);
+      last=Buffer;
+      token = strsep(&last, ",");
+      //gMicGain = simple_strtoul(token,NULL,10);
+      gMicGainTest = simple_strtoul(token,NULL,10);
+      token = strsep(&last, ",");
+      //gMicADC = simple_strtoul(token,NULL,10);
+      gMicADCTest = simple_strtoul(token,NULL,10);
 
-        last = Buffer;
-        token = strsep(&last, ",");
-        gMicGainTest = simple_strtoul(token, NULL, 10);
-        token = strsep(&last, ",");
-        gMicADCTest = simple_strtoul(token, NULL, 10);
+	  //CODECDBG ("gMicGain, gMicADC=%d,%d\n", gMicGain, gMicADC);
+	  CODECDBG ("gMicGain, gMicADC=%d,%d", gMicGainTest, gMicADCTest);
 
-        CODECDBG("gMicGain, gMicADC=%d,%d", gMicGainTest, gMicADCTest);
-
-        /* Close the file */
-        fput(filp);
-        /* release allocate memeory */
-        kfree(Buffer);
-        
-        return 0;
+      /* Close the file */
+	 fput(filp);
+      /* release allocate memeory */
+      kfree(Buffer);      
+      return 0;
 }
 #endif
 
-#ifdef LOAD_VOIP_CONFIG
-int ReadVoipConfigFile(char *Filename, int StartPos)
-{
-        struct file *filp;  
-        char *Buffer;
-        mm_segment_t oldfs;
-        int BytesRead;
+#define MC1N2_LOAD_PRD_FOR_SPL
 
-        Buffer = kmalloc(256, GFP_KERNEL);
-        if (!Buffer) 
-                return -1;
-
-        filp = filp_open(Filename, 00, O_RDONLY);
-        if (IS_ERR(filp) || !filp) {
-                CODECDBG("ReadSoundconfig open error");
-                return -1;  /* Or do something else */
-        }
-
-        if (!filp->f_op->read) {
-                CODECDBG("ReadSoundconfig open read error");
-                return -1;  /* File(system) doesn't allow reads */
-        }
-
-        /* Now read 4096 bytes from postion "StartPos" */
-        filp->f_pos = StartPos;
-
-        oldfs = get_fs();
-        set_fs(KERNEL_DS);
-
-        BytesRead = filp->f_op->read(filp,Buffer, 256, &filp->f_pos);
-        set_fs(oldfs);
-
-        /* playback */
-        last = Buffer;
-        token = strsep(&last, ",");
-        gSpeakerGain = simple_strtoul(token, NULL, 10);
-        token = strsep(&last, ",");
-        gReceiverGain = simple_strtoul(token, NULL, 10);
-        token = strsep(&last, ",");
-        gHeadPhoneGain = simple_strtoul(token, NULL, 10);
-
-        /* mic */ 
-        token = strsep(&last, ",");
-        gSpeaker_mic_gain = simple_strtoul(token, NULL, 10);
-        token = strsep(&last, ",");
-        gSpeaker_mic_adc = simple_strtoul(token, NULL, 10);
-        token = strsep(&last, ",");
-        gHeadPhone_mic_gain = simple_strtoul(token, NULL, 10);
-        token = strsep(&last, ",");
-        gHeadPhone_mic_adc = simple_strtoul(token, NULL, 10);
-        token = strsep(&last, ",");
-        gSpeakerGainDac= simple_strtoul(token, NULL, 10);
-        token = strsep(&last, ",");
-        gSpeakerDacMaster= simple_strtoul(token, NULL, 10);
-        token = strsep(&last, ",");
-        gSpeakerDitVol= simple_strtoul(token, NULL, 10);
-
-        /* Close the file */
-        fput(filp);
-
-        /* release allocate memeory */
-        kfree(Buffer);
-
-        return 0;
-}
-#endif 
-
-#ifdef MC1N2_LOAD_PRD_FOR_SPL
+#ifdef MC1N2_LOAD_PRD_FOR_SPL // VENTURI PROJECT  UPDATE BY LEE SEUNG WOOK FOR SOUND TUNNING 
 #define MC1N2_SPL_100DB 1
 #define MC1N2_SPL_107DB 2
 #define MC1N2_PRD_PATH "/efs/buyer_code.dat"
 
-int gSplFlag = MC1N2_SPL_107DB;
-int isLoadPRDconfig = 1;
+int gSplFlag=MC1N2_SPL_107DB;
+int isLoadPRDconfig=1;
+#define EUR_VOL_COUNT   16
+const char *EURVol[] = {"EDC","EUR","NEE","ROM","TPH","TRA","XEE","XEF","XEH","XEN","XEO","XET","XEU","XEZ","XEG","SEB"};
 
-#define EUR_VOL_COUNT 19
-const char *EURVol[] = {"EDC","EUR","NEE","ROM","TPH","XEE","XEF","XEH","XEN","XEO","XET","XEU","XEZ","SSA","XFA","XEG","TUR","TRA","SEB"};
-
-static int LoadPRDFile(void)
+static int LoadPRDFile()
 {
-        struct file *filp;
-        char *Buffer;
-        mm_segment_t oldfs;
-        int BytesRead,i;
-        char prd[4] = {0};
-        int err = 0;
+	struct file 	*filp;
+     char * Buffer;
+	mm_segment_t	oldfs;
+	int		BytesRead,i;
+     char prd[4]={0};
+     int err=0;
 
-        Buffer = kmalloc(256, GFP_KERNEL);
-        if (!Buffer) {
-                CODECDBG("Buffer kmalloc error");
+	Buffer = kmalloc(256,GFP_KERNEL);
+	if (Buffer==NULL) 	return -1;
+	
+	filp = filp_open(MC1N2_PRD_PATH,00,O_RDONLY);
+
+	if (IS_ERR(filp)||(filp==NULL))
+	{
+           CODECDBG("LoadPRDFile open error");
                 err = -1;
-                goto default_case;
-        }
+		goto default_case;
+    }
 
-        filp = filp_open(MC1N2_PRD_PATH, 00, O_RDONLY);
-
-        if (IS_ERR(filp) || !filp) {
-                CODECDBG("LoadPRDFile open error");
+	if (filp->f_op->read==NULL)
+	{
+           CODECDBG("LoadPRDFile open read error");
                 err = -1;
-                goto default_case;
-        }
+		goto default_case;
+       }
 
-        if (!filp->f_op->read) {
-                CODECDBG("LoadPRDFile open read error");
-                err = -1;
-                goto default_case;
-        }
+	/* Now read 4096 bytes from postion "StartPos" */
+	filp->f_pos = 0;
+	oldfs = get_fs();
+	set_fs(KERNEL_DS);
+	BytesRead = filp->f_op->read(filp,Buffer,256,&filp->f_pos);
+	set_fs(oldfs);
 
-        /* Now read 4096 bytes from postion "StartPos" */
-        filp->f_pos = 0;
+      /* copy prd data from read buffer */
+      prd[0]=Buffer[0]; prd[1]=Buffer[1]; prd[2]=Buffer[2];  prd[3]=NULL;
 
-        oldfs = get_fs();
-        set_fs(KERNEL_DS);
+      CODECDBG ("prd=%s\n", prd);
 
-        BytesRead = filp->f_op->read(filp,Buffer,256,&filp->f_pos);
-        set_fs(oldfs);
-
-        /* copy prd data from read buffer */
-        prd[0] = Buffer[0]; 
-        prd[1] = Buffer[1]; 
-        prd[2] = Buffer[2];  
-        prd[3] = '\0';
-
-        CODECDBG("prd=%s\n", prd);
-
-        gSplFlag = MC1N2_SPL_107DB;
-        for (i = 0; i < EUR_VOL_COUNT; i++) {
-                if (!strcmp(prd,EURVol[i])) {
-                        gSplFlag = MC1N2_SPL_100DB;
-                        break;
-                }
-        }
+    gSplFlag  = MC1N2_SPL_107DB;
+    for( i = 0; i < EUR_VOL_COUNT; i++){
+        if(!strcmp(prd,EURVol[i])){
+            gSplFlag = MC1N2_SPL_100DB;
+            break;
+        }        
+    }
 
 default_case:
-        CODECDBG("current spl level =%d\n", gSplFlag);
+    CODECDBG("current spl level =%d\n",gSplFlag);
+      
+      /* Close the file */
+      if(!filp)
+	 fput(filp);
+      /* release allocate memeory */
+      kfree(Buffer);      
+      isLoadPRDconfig=0;
 
-        /* Close the file */
-        if (!filp)
-                fput(filp);
-
-        /* release allocate memeory */
-        kfree(Buffer);
-
-        if (MC1N2_SPL_100DB == gSplFlag) {
-                /* Load 100DB Spl level */
-                g_HEADPHONE_VOL = HEADPHONE_VOL_EUR;
-                g_HEADPHONE_VOL_FM = HEADPHONE_VOL_FM_EUR;
-                g_DUAL_VOL_FOR_HEADPHONE = DUAL_VOL_FOR_HEADPHONE_EUR;
-                gMicGain = MIC1_GAIN_REC_EUR;
-                gMicADC = MC1N2_MIC1_ADC_VOL_REC_EUR;
-                g_MIC2_GAIN_TEST = MIC2_GAIN_TEST_EUR;
-                g_MC1N2_MIC2_ADC_VOL = MC1N2_MIC2_ADC_VOL_EUR;
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-                /* load analog volume table */
-                gAnalVolHpIndex = gAnalVolHpIndex_eur;
-#endif
-                CODECDBG("load spl 100DB\n");
-        } else {
-                /* Load 107DB Spl level */
-                g_HEADPHONE_VOL = HEADPHONE_VOL_KOR;
-                g_HEADPHONE_VOL_FM = HEADPHONE_VOL_FM_KOR;
-                g_DUAL_VOL_FOR_HEADPHONE = DUAL_VOL_FOR_HEADPHONE_KOR;
-                gMicGain = MIC1_GAIN_REC_KOR;
-                gMicADC = MC1N2_MIC1_ADC_VOL_REC_KOR;
-                g_MIC2_GAIN_TEST = MIC2_GAIN_TEST_KOR;
-                g_MC1N2_MIC2_ADC_VOL = MC1N2_MIC2_ADC_VOL_KOR;
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-                /* load analog volume table */
-                gAnalVolHpIndex = gAnalVolHpIndex_kor;
-#endif
-                CODECDBG("load spl 107DB\n");
-        }
-
-        return err;
+      if(MC1N2_SPL_100DB==gSplFlag)
+      {
+           // Load 100DB Spl level  
+           g_HEADPHONE_VOL_FM=HEADPHONE_VOL_FM_EUR;
+           g_DUAL_VOL_FOR_HEADPHONE=DUAL_VOL_FOR_HEADPHONE_EUR;
+           gMicGain = MIC1_GAIN_REC_EUR;
+           gMicADC	= MC1N2_MIC1_ADC_VOL_REC_EUR;
+           g_MIC2_GAIN_TEST=MIC2_GAIN_TEST_EUR;
+           g_MC1N2_MIC2_ADC_VOL=MC1N2_MIC2_ADC_VOL_EUR;
+           /* load analog volume table */
+           gAnalVolHpIndex=&gAnalVolHpIndex_eur;
+            printk("load spl 100DB\n");
+      }else 
+      {
+           // Load 107DB Spl level
+           g_HEADPHONE_VOL_FM=HEADPHONE_VOL_FM_KOR;
+           g_DUAL_VOL_FOR_HEADPHONE=DUAL_VOL_FOR_HEADPHONE_KOR;
+           gMicGain = MIC1_GAIN_REC_KOR;
+           gMicADC	= MC1N2_MIC1_ADC_VOL_REC_KOR;
+           g_MIC2_GAIN_TEST=MIC2_GAIN_TEST_KOR;
+           g_MC1N2_MIC2_ADC_VOL=MC1N2_MIC2_ADC_VOL_KOR;           
+           /* load analog volume table */
+           gAnalVolHpIndex=&gAnalVolHpIndex_kor;
+           printk("load spl 107DB\n");
+      }
+      
+      return err;
 }
 #endif
+
 
 static int mc1n2_setup_dai(struct mc1n2_data *mc1n2, int id, int mode, int dir)
 {
@@ -700,9 +610,9 @@ static int mc1n2_control_dit(struct mc1n2_data *mc1n2, int id, int enable)
 		}
 	}
 
-        /* Turn off main mic_bias */
-        if (!enable)
+        if (MC1N2_VOIP_STATUS_DISCONNECT == mc1n2_voip_get_status()) {
                 info.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF;
+        }
 
 	return _McDrv_Ctrl(MCDRV_SET_PATH, &info, 0);
 }
@@ -724,7 +634,7 @@ static int mc1n2_update_clock(struct mc1n2_data *mc1n2)
 static int mc1n2_set_clkdiv_common(struct mc1n2_data *mc1n2, int div_id, int div)
 {
 	struct mc1n2_setup *setup = &mc1n2->setup;
-	CODECDBG("div_id= %d, div = %d  \n", div_id,div);
+	CODECDBG("div_id= %d, div = %d  \n", div_id,div);    //yosef add
 	
 	switch (div_id) {
 	case MC1N2_CKSEL:
@@ -780,7 +690,8 @@ static int mc1n2_set_clkdiv_common(struct mc1n2_data *mc1n2, int div_id, int div
 
 static int mc1n2_set_fmt_common(struct mc1n2_port_params *port, unsigned int fmt)
 {
-        CODECDBG("fmt=%d",fmt);
+
+CODECDBG("fmt=%d",fmt);    //yosef add
 
 	/* master */
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
@@ -825,10 +736,7 @@ static int mc1n2_i2s_set_clkdiv(struct snd_soc_dai *dai, int div_id, int div)
 	struct snd_soc_codec *codec = dai->codec;
 	struct mc1n2_data *mc1n2 = codec->drvdata;
 	struct mc1n2_port_params *port = &mc1n2->port[dai->id];
-
-
-	CODECDBG("div_id= %d, div=%d", div_id, div);
-        
+	CODECDBG("div_id= %d, div=%d", div_id, div);    //yosef add
 	switch (div_id) {
 	case MC1N2_BCLK_MULT:
 		switch (div) {
@@ -859,9 +767,7 @@ static int mc1n2_i2s_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	struct mc1n2_data *mc1n2 = codec->drvdata;
 	struct mc1n2_port_params *port = &mc1n2->port[dai->id]; 
 
-
-	CODECDBG("fmt= %d", fmt);
-
+	CODECDBG("fmt= %d", fmt);    //yosef add
 	/* format */
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_I2S:
@@ -895,12 +801,19 @@ static int mc1n2_i2s_hw_params(struct snd_pcm_substream *substream,
 	int dir = substream->stream;
 	int rate;
 	int err = 0;
-
-
 	CODECDBG("hw_params: [%d] name=%s, dir=%d, rate=%d, bits=%d, ch=%d\n",
 		 dai->id, substream->name, dir,
 		 params_rate(params), params_format(params), params_channels(params));
 
+#if 0
+		CODECDBG(KEY_KERN_DEBUG "\n Yosef: mc1n2_i2s_hw_params \n");   //yosef add
+		CODECDBG(KEY_KERN_DEBUG "\n Yosef:/* dai->id */= %d \n",dai->id);    //yosef add
+		CODECDBG(KEY_KERN_DEBUG "\n Yosef:/* substream->name= %s \n", substream->name);    //yosef add
+		CODECDBG(KEY_KERN_DEBUG "\n Yosef:/* dir= %d \n", dir);    //yosef add
+		CODECDBG(KEY_KERN_DEBUG "\n Yosef:/* params_format(params) */= %d \n",params_format(params));    //yosef add
+		CODECDBG(KEY_KERN_DEBUG "\n Yosef:/*params_rate(params) */= %d \n",params_rate(params));    //yosef add
+		CODECDBG(KEY_KERN_DEBUG "\n Yosef:/*params_channels(params)*/= %d \n",params_channels(params));    //yosef add//yosef
+#endif
 	/* format (bits) */
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_S16_LE:
@@ -942,10 +855,8 @@ static int mc1n2_i2s_hw_params(struct snd_pcm_substream *substream,
 	default:
 		return -EINVAL;
 	}
-        
-        /* fix samplerate for recording */
-        if (dir == 1) 
-                rate = MCDRV_FS_44100;
+    /* fix samplerate for recording */
+     if (dir==1) rate=MCDRV_FS_44100;
 
 	mutex_lock(&mc1n2->mutex);
 
@@ -1035,6 +946,7 @@ static int mc1n2_hw_free(struct snd_pcm_substream *substream,
 	if (dir == SNDRV_PCM_STREAM_PLAYBACK) {
 		err = mc1n2_control_dir(mc1n2, dai->id, 0);
 	} else {
+                record_state = 0;
 		err = mc1n2_control_dit(mc1n2, dai->id, 0);
 	}
 	if (err != MCDRV_SUCCESS) {
@@ -1459,134 +1371,211 @@ EXPORT_SYMBOL_GPL(mc1n2_dai);
 /*
  * Control interface
  */
+//heedoo for FM30
 #ifdef CONFIG_FMRADIO_CODEC_GAIN
-/* Volume map for FM radio codec line-input volume */
+/* volmap for FM radio LINE Input Volumes */
 static SINT16 mc1n2_vol_fm[] = {
-        0xe501, 0xe6ff, 0xe801, 0xea01, 0xec01, 0xed81, 0xf001, 0xf181, 0xf301, 0xf481, 
-        0xf601, 0xf781, 0xf901, 0xfa81, 0xfc01, 0xfd81, 0x0001, 0x0181, 0x0301, 0x0401, 
-        0x0501, 0x0601, 0x0701, 0x0801, 0x0901, 0x0a01, 0x0b01, 0x0c01, 0x0d01, 0x0e01, 
-        0x0f01
+	0xe501, 0xe6ff, 0xe801, 0xea01, 0xec01, 0xed81, 0xf001,
+	0xf181, 0xf301, 0xf481, 0xf601, 0xf781, 0xf901, 0xfa81, 0xfc01,
+	0xfd81, 0x0001, 0x0181, 0x0301, 0x0401, 0x0501, 0x0601, 0x0701,
+	0x0801, 0x0901, 0x0a01, 0x0b01, 0x0c01, 0x0d01, 0x0e01, 0x0f01
 };
 #endif
+//heedoo FM30
 
 #ifdef CONFIG_FMRADIO_CODEC_GAIN
 unsigned char McDrv_Ctrl_get_fm_vol(void)
 {
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
-
-
-        CODECDBG("volume = %d", mc1n2->fm_volume);
-
-        return mc1n2->fm_volume;
+        return fm_volume_backup;
 }
 EXPORT_SYMBOL(McDrv_Ctrl_get_fm_vol);
 
-unsigned int McDrv_Ctrl_set_fm_vol(unsigned int volume)
+unsigned int McDrv_Ctrl_fm( unsigned int volume )
 {
-        int err;
-        MCDRV_VOL_INFO fm_vol;
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
+	int err;
+	MCDRV_VOL_INFO fm_vol;
+	MCDRV_PATH_INFO path;
+	struct snd_soc_codec *codec = mc1n2_get_codec_data(); // yosef added for FM noise
+	struct mc1n2_data *mc1n2 = codec->drvdata;  // vol recovery test.
 
+	fm_volume_backup = volume;
+	if(fmradio_state == 0)
+		return 0;
+	
+	McResCtrl_GetVolInfo(&fm_vol);
+	memset(&fm_vol, 0, sizeof(MCDRV_VOL_INFO));
 
-        if (volume >= FM_VOL_LEVEL)
-                mc1n2->fm_volume = FM_VOL_LEVEL-1;
-        else if (volume < 0)
-                mc1n2->fm_volume = 0;
-        else
-                mc1n2->fm_volume = volume;
-        
+CODECDBG("volume = %d  \n",volume);    //yosef add
 
-        if (!fmradio_state)
-                return 0;
+		if(volume == 0){
+			gpio_set_value(GPIO_MUTE_ON, 0);
+			fm_vol.aswA_Ad0[0] = mc1n2_vol_fm[volume];
+			fm_vol.aswA_Ad0[1] = mc1n2_vol_fm[volume];
+			mc1n2->vol_store.aswA_Ad0[0]=mc1n2_vol_fm[volume];
+			mc1n2->vol_store.aswA_Ad0[1]=mc1n2_vol_fm[volume];
+			}
+		else
+			{
+			msleep(4);
+			if(!HP_SPK_CHG)
+				gpio_set_value(GPIO_MUTE_ON, 1);
 
+			fm_vol.aswA_Ad0[0] = mc1n2_vol_fm[volume];
+			fm_vol.aswA_Ad0[1] = mc1n2_vol_fm[volume];
+			mc1n2->vol_store.aswA_Ad0[0]=mc1n2_vol_fm[volume];
+			mc1n2->vol_store.aswA_Ad0[1]=mc1n2_vol_fm[volume];
+			}
+		
+		err = _McDrv_Ctrl(MCDRV_SET_VOLUME,(void*) &fm_vol, 0);
 
-        McResCtrl_GetVolInfo(&fm_vol);
-        memset(&fm_vol, 0, sizeof(MCDRV_VOL_INFO));
+		if(volume && HP_SPK_CHG)
+		{
+			msleep(4);
+			gpio_set_value(GPIO_MUTE_ON, 1);
+			HP_SPK_CHG = 0;
+		}
+		if (err != MCDRV_SUCCESS) {
+			CODECDBG("%d: Error in MCDRV_SET_VOLUME", err);
+			return -EIO;
+		}
 
-        CODECDBG("volume = %d", volume);
-
-        fm_vol.aswA_Ad0[0] = mc1n2_vol_fm[mc1n2->fm_volume];
-        fm_vol.aswA_Ad0[1] = mc1n2_vol_fm[mc1n2->fm_volume];
-        mc1n2->vol_store.aswA_Ad0[0] = mc1n2_vol_fm[mc1n2->fm_volume];
-        mc1n2->vol_store.aswA_Ad0[1] = mc1n2_vol_fm[mc1n2->fm_volume];
-
-        err = _McDrv_Ctrl(MCDRV_SET_VOLUME,(void*) &fm_vol, 0);
-        
-        if (err != MCDRV_SUCCESS) {
-                CODECDBG("%d: Error in MCDRV_SET_VOLUME", err);
-                return -EIO;
-        }
-
-        return 0;
+		return 0;
 }
-EXPORT_SYMBOL(McDrv_Ctrl_set_fm_vol);
 
-unsigned int McDrv_Ctrl_fm_mute(void)
+
+EXPORT_SYMBOL(McDrv_Ctrl_fm);
+
+
+unsigned int McDrv_Ctrl_fm_mute(  )
 {
-        MCDRV_VOL_INFO fm_vol;
+	int err;
+	struct snd_soc_codec *codec = mc1n2_get_codec_data(); // yosef added for FM noise 
+	MCDRV_VOL_INFO fm_vol;
+	MCDRV_PATH_INFO path;   				// yosef fm noise when turn off
+//	McResCtrl_GetPathInfoVirtual(&path);	// yosef fm noise when turn off
+	McResCtrl_GetVolInfo(&fm_vol);	// yosef fm noise when turn off
 
+CODECDBG("");    //yosef add
 
-        CODECDBG("");
-
-        McResCtrl_GetVolInfo(&fm_vol);
-
-        memset(&fm_vol, 0, sizeof(MCDRV_VOL_INFO));
-
-        return 0;
+	memset(&fm_vol, 0, sizeof(MCDRV_VOL_INFO));
+	gpio_set_value(GPIO_MUTE_ON, 0);
+	return 0;
 }
+
 EXPORT_SYMBOL(McDrv_Ctrl_fm_mute);
-#else
-unsigned int McDrv_Ctrl_set_fixed_fm_vol(void)
+
+unsigned int McDrv_Ctrl_fm_recovery( )
 {
-        int err;
-        MCDRV_VOL_INFO fm_vol;
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
+	int err;
+	struct snd_soc_codec *codec = mc1n2_get_codec_data(); // yosef added for FM noise 	
+	MCDRV_VOL_INFO fm_vol;
 
+	if(fmradio_state == 0)
+		return 0;
 
-        if (!fmradio_state)
-                return 0;
+	CODECDBG("");    //yosef add
 
+	return 0;
 
-        McResCtrl_GetVolInfo(&fm_vol);
-        memset(&fm_vol, 0, sizeof(MCDRV_VOL_INFO));
-
-        fm_vol.aswA_Ad0[0] = FM_FIXED_GAIN;
-        fm_vol.aswA_Ad0[1] = FM_FIXED_GAIN;
-        mc1n2->vol_store.aswA_Ad0[0] = FM_FIXED_GAIN;
-        mc1n2->vol_store.aswA_Ad0[1] = FM_FIXED_GAIN;
-
-        err = _McDrv_Ctrl(MCDRV_SET_VOLUME,(void*) &fm_vol, 0);
-        
-        if (err != MCDRV_SUCCESS) {
-                CODECDBG("%d: Error in MCDRV_SET_VOLUME", err);
-                return -EIO;
-        }
-
-        return 0;
 }
+EXPORT_SYMBOL(McDrv_Ctrl_fm_recovery);
 #endif
 
-void McDrv_Ctrl_MICBIAS2(int en)
+#if 1  // yosef added
+
+void 	McDrv_Ctrl_MICBIAS2(int en )
 {
-        MCDRV_PATH_INFO path;
+	int err;
+	MCDRV_PATH_INFO path;
+//	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+//	struct mc1n2_data *mc1n2 = codec->drvdata;
 
-        McResCtrl_GetPathInfoVirtual(&path);
+      if (MC1N2_VOIP_STATUS_DISCONNECT==mc1n2_voip_get_status())
+      {
+	    if(record_state == 1)
+	    {
+            CODECDBG("block by record state");
+		return;
+        }
+      }
 
-        CODECDBG("(%d)", en);
+	McResCtrl_GetPathInfoVirtual(&path);
 
-        if (en)
-                path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC2_BLOCK] = MCDRV_SRC0_MIC2_ON;
-        else
-                path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC2_BLOCK] = MCDRV_SRC0_MIC2_OFF;
+	CODECDBG("en= %d",en);   //yosef add
 
-        _McDrv_Ctrl(MCDRV_SET_PATH, &path, 0);
-
-        return;
+      if(en==1){
+    //	    path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC2_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
+               path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC2_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
+    	    } 
+    	    else
+    	    {
+        //	    path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC2_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+    		    path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC2_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+    	    }    
+  	err=_McDrv_Ctrl(MCDRV_SET_PATH, &path, 0);
+//	err=mc1n2_set_path(codec, &path);
+	CODECDBG("path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC2_BLOCK]= %d",path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC2_BLOCK]);   //yosef add
+	return err;
 }
+#else
+void 	McDrv_Ctrl_MICBIAS2(int en )
+{
+
+		return ;
+}
+
+
+#endif
+
 EXPORT_SYMBOL(McDrv_Ctrl_MICBIAS2);
+
+
+/*   
+void 	McDrv_Ctrl_DNG_ctrl(int en , int path, int threshold)  
+
+ en = 0 :noise gate disable, 1: noise gate enable
+ path = 0:SPK, 1:HP, 2:RCV,
+ threshold = 	MCDRV_DNG_THRES_30			(0)
+			MCDRV_DNG_THRES_36			(1)
+			MCDRV_DNG_THRES_42			(2)
+			MCDRV_DNG_THRES_48			(3)
+			MCDRV_DNG_THRES_54			(4)
+			MCDRV_DNG_THRES_60			(5)
+			MCDRV_DNG_THRES_66			(6)
+			MCDRV_DNG_THRES_72			(7)
+			MCDRV_DNG_THRES_78			(8)
+			MCDRV_DNG_THRES_84			(9)
+
+*/
+
+void 	McDrv_Ctrl_DNG_ctrl(int en , int path, int threshold)
+{
+	int err;
+	MCDRV_DNG_INFO DNG_path;
+//	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+//	struct mc1n2_data *mc1n2 = codec->drvdata;
+
+//================== yosef added for debugging
+	McResCtrl_GetDngInfo(&DNG_path);
+//==================================
+
+	CODECDBG("en= %d",en);   //yosef add
+
+		DNG_path.abOnOff[path]= en;
+		DNG_path.abThreshold[path]=threshold;
+		DNG_path.abHold[path]=MCDRV_DNG_HOLD_500;
+		DNG_path.abRelease[path]=MCDRV_DNG_ATTACK_800;
+		DNG_path.abTarget[path]=MCDRV_DNG_RELEASE_940;
+		DNG_path.abThreshold[path]=MCDRV_DNG_TARGET_MUTE;
+
+		err = _McDrv_Ctrl(MCDRV_SET_DNG, &DNG_path, 0x3F3F3F);
+
+//	err=mc1n2_set_path(codec, &path);
+	CODECDBG("err= %d",err);   //yosef add
+//		return err;
+}
+
+EXPORT_SYMBOL(McDrv_Ctrl_DNG_ctrl);
 
 int mc1n2_set_path(struct snd_soc_codec *codec, MCDRV_PATH_INFO *info)
 {
@@ -1860,9 +1849,11 @@ static const SINT16 cvol[240] = {
 	  3841,   3937,   4033,   4129,   4225,   4321,   4417,   4513
 };
 
+#if 1
 static const SINT16 mvol[4] = {
-        3841, 5121, 6401, 7681
+	  3841,   5121,   6401,   7681
 };
+#endif
 
 unsigned int mc1n2_read_reg(struct snd_soc_codec *codec, unsigned int reg)
 {
@@ -1872,144 +1863,153 @@ unsigned int mc1n2_read_reg(struct snd_soc_codec *codec, unsigned int reg)
 int mc1n2_write_reg(struct snd_soc_codec *codec,
 			   unsigned int reg, unsigned int value)
 {
-        u16 *cp;
-        struct mc1n2_data *mc1n2 = codec->drvdata;
-        MCDRV_VOL_INFO vol;
+	u16 *cp;
+	struct mc1n2_data *mc1n2 = codec->drvdata;
+	MCDRV_VOL_INFO vol;
 
-        cp = (u16 *)codec->reg_cache + reg;
+	cp = (u16 *)codec->reg_cache + reg;
 
-        memset(&vol, 0, sizeof(vol));
+	memset(&vol, 0, sizeof(vol));
 
-        switch (reg) {
-        case MC1N2_RCV_VOL_L:
-                mc1n2->rcv_vol_l = value;
-                
-                if (value > 63) 
-                        value = 63;
-                
-                vol.aswA_Rc[0] = pvol[value];
-                break;
-                
-        case MC1N2_RCV_VOL_R:
-                mc1n2->rcv_vol_r = value;
-                break;
-        
-        case MC1N2_SPEAKER_VOL_L:
-                mc1n2->sp_vol_l = value;
-                
-                if (value > 63)
-                        value = 63;
-                
-                vol.aswA_Sp[0] = pvol[value];
-        break;
-        
-        case MC1N2_SPEAKER_VOL_R:
-                mc1n2->sp_vol_r = value;
-                
-                if (value > 63)
-                        value = 63;
-                
-                vol.aswA_Sp[1] = pvol[value];
-                break;
+	switch(reg) {
+	case MC1N2_RCV_VOL_L:
+		mc1n2->rcv_vol_l = value;
+		if(value > 63) {
+			value = 63;
+		}
+		vol.aswA_Rc[0] = pvol[value];
+		break;
+	case MC1N2_RCV_VOL_R:
+		mc1n2->rcv_vol_r = value;
+		break;
+	case MC1N2_SPEAKER_VOL_L:
+		mc1n2->sp_vol_l = value;
+		if(value > 63) {
+			value = 63;
+		}
+		vol.aswA_Sp[0] = pvol[value];
+		break;
+	case MC1N2_SPEAKER_VOL_R:
+		mc1n2->sp_vol_r = value;
+		if(value > 63) {
+			value = 63;
+		}
+		vol.aswA_Sp[1] = pvol[value];
+		break;
 
-        case MC1N2_HEADPHONE_VOL_L:
-                mc1n2->hp_vol_l = value;
-                
-                if (value > 63)
-                        value = 63;
+	case MC1N2_HEADPHONE_VOL_L:
+		mc1n2->hp_vol_l = value;
+		if(value > 63) {
+			value = 63;
+		}
+		vol.aswA_Hp[0] = pvol[value];
+//CODECDBG(KEY_KERN_DEBUG " Yosef:MC1N2_HEADPHONE_VOL_L= %d \n",value);   //yosef add
+		break;
+	case MC1N2_HEADPHONE_VOL_R:
+		mc1n2->hp_vol_r = value;
+		if(value > 63) {
+			value = 63;
+		}
+		vol.aswA_Hp[1] = pvol[value];
+		break;
+	case MC1N2_ADC_VOL_L:
+		mc1n2->ad_vol_l = value;
+		if(value > 239) {
+			value = 239;
+		}
+		vol.aswD_Ad0[0] = cvol[value];
+		vol.aswD_Ad0[1] = cvol[value];
+//		CODECDBG ("vol.aswD_Ad0[0]=%d\n", vol.aswD_Ad0[0]);
+		break;
 
-                vol.aswA_Hp[0] = pvol[value];
-                break;
-        
-        case MC1N2_HEADPHONE_VOL_R:
-                mc1n2->hp_vol_r = value;
-                
-                if (value > 63)
-                        value = 63;
+      case MC1N2_DAC_VOL_L:
+            mc1n2->da_vol_l = value;
+            if(value > 239) {
+                value = 239;
+            }
+            vol.aswD_Dir0[0] = cvol[value];
+     //       vol.aswD_Dit0[1] = cvol[value];
+    //      CODECDBG ("vol.aswD_Ad0[0]=%d\n", vol.aswD_Ad0[0]);
+            break;
+     case MC1N2_DAC_MASTER:
+           mc1n2->da_mas_vol=value;
+            if(value > 239) {
+                value = 239;
+            }
+           vol.aswD_DacMaster[0] = cvol[value];
+           vol.aswD_DacMaster[1] = cvol[value];
+           break;
 
-                vol.aswA_Hp[1] = pvol[value];
-                break;
-        
-        case MC1N2_ADC_VOL_L:
-                mc1n2->ad_vol_l = value;
-                
-                if (value > 239)
-                        value = 239;
+      case MC1N2_DAC_DAT_VAL:
+           mc1n2->da_dit_vol=value;
+            if(value > 239) {
+                value = 239;
+            }
+           vol.aswD_Dit0[0] = cvol[value];
+           vol.aswD_Dit0[1] = cvol[value];
+           break;
 
-                vol.aswD_Ad0[0] = cvol[value];
-                vol.aswD_Ad0[1] = cvol[value];
-                break;
+	case MC1N2_ADC_VOL_R:
+		mc1n2->ad_vol_r = value;
+		if(value > 239) {
+			value = 239;
+		}
+		vol.aswD_Ad0[1] = cvol[value];
+//		CODECDBG ("vol.aswD_Ad0[1]=%d\n", vol.aswD_Ad0[1]);
+		break;
 
-        case MC1N2_DAC_VOL_L:
-                mc1n2->da_vol_l = value;
-                
-                if (value > 239)
-                        value = 239;
 
-                vol.aswD_Dir0[0] = cvol[value];
-                break;
-        
-        case MC1N2_DAC_MASTER:
-                mc1n2->da_mas_vol=value;
-                
-                if (value > 239)
-                        value = 239;
 
-                vol.aswD_DacMaster[0] = cvol[value];
-                vol.aswD_DacMaster[1] = cvol[value];
-                break;
+#if 1  // for MIC gain test
+	case MC1N2_MIC_ADC_VOL:
+		mc1n2->ad_vol_r = value;
+		if(value > 239) {
+			value = 239;
+		}
+		vol.aswD_Ad1[0] = cvol[value];
+		break;
+	case MC1N2_MIC1_GAIN:
+		if(value > 3) {
+			value = 3;
+		}
+		vol.aswA_Mic1Gain[0] = mvol[value];
+		break;
+	case MC1N2_MIC2_GAIN:
+		if(value > 3) {
+			value = 3;
+		}
+		vol.aswA_Mic2Gain[0] = mvol[value];
+		break;
+#endif
+		
+	}
 
-        case MC1N2_DAC_DAT_VAL:
-                mc1n2->da_dit_vol=value;
-                
-                if (value > 239)
-                        value = 239;
+	_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&vol, 0);
 
-                vol.aswD_Dit0[0] = cvol[value];
-                vol.aswD_Dit0[1] = cvol[value];
-                break;
+	*cp = value;
 
-        case MC1N2_ADC_VOL_R:
-                mc1n2->ad_vol_r = value;
-                
-                if (value > 239)
-                        value = 239;
+	return 0;
+}
 
-                vol.aswD_Ad0[1] = cvol[value];
-                break;
 
-        case MC1N2_MIC_ADC_VOL:
-                mc1n2->ad_vol_r = value;
-                
-                if (value > 239)
-                        value = 239;
+void mc1n2_set_analog_volume_hp(int index)
+{
+    	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
+    CODECDBG("set headphone analog volume=%d ,%d",index,gAnalVolHpIndex[index]);
+    mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, gAnalVolHpIndex[index]);
+    mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, gAnalVolHpIndex[index]);
+    return ;
+}
 
-                vol.aswD_Ad1[0] = cvol[value];
-                break;
-        
-        case MC1N2_MIC1_GAIN:
-                if (value > 3)
-                        value = 3;
-                
-                vol.aswA_Mic1Gain[0] = mvol[value];
-                break;
-        
-        case MC1N2_MIC2_GAIN:
-                if (value > 3)
-                        value = 3;
-                
-                vol.aswA_Mic2Gain[0] = mvol[value];
-                break;
-        
-        default:
-                break;
-        }
-
-        _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&vol, 0);
-
-        *cp = value;
-
-        return 0;
+void mc1n2_set_analog_volume_spk(int index)
+{
+    	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
+    CODECDBG("set speaker analog volume=%d ,%d",index,gAnalVolSpeakerIndex[index]);
+    mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, gAnalVolSpeakerIndex[index]);
+    mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, gAnalVolSpeakerIndex[index]);   
+    return ;
 }
 
 static int mc1n2_get_playback_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
@@ -2024,341 +2024,400 @@ static int mc1n2_get_playback_path(struct snd_kcontrol *kcontrol, struct snd_ctl
 
 static int mc1n2_set_playback_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-        int path_num = ucontrol->value.integer.value[0];
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
-        MCDRV_PATH_INFO path;
-        MCDRV_DIO_INFO diohdmi;
-        static MCDRV_DIO_INFO dioorg;
+	int path_num = ucontrol->value.integer.value[0];
+	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
+	MCDRV_PATH_INFO path;
+	MCDRV_DIO_INFO diohdmi;
+	static MCDRV_DIO_INFO dioorg;
 
-#ifdef MP3_SNDCONFIG
-        if (isLoadSoundConfig) {
-                if (!ReadSoundConfigFile("/sdcard/soundcfg/analog.txt", 0))
-                        isLoadSoundConfig = 0;
-        }
+	#ifdef MP3_SNDCONFIG  // ROSSI PROJECT  UPDATE BY LEE SEUNG WOOK FOR SOUND TUNNING, 2010.08.23
+	if(isLoadSoundConfig==1)
+      {
+	      	if(0== ReadSoundConfigFile("/sdcard/soundcfg/analog.txt",0))
+	      	{
+           		isLoadSoundConfig=0;
+		}
+      }
+	#endif
+
+    #ifdef MC1N2_LOAD_PRD_FOR_SPL
+    if(isLoadPRDconfig==1)
+    {
+        LoadPRDFile();
+    }
+    #endif 
+
+#if 0 // yosef blocked for radio -> media test
+	if(mc1n2->playback_path == path_num) {
+		/* same as the previous setting, nothing to do */
+		return 0;
+	}
 #endif
+	if(mc1n2->playback_path == TV_OUT) {
+		/* exit HDMI mode */
+		memset(&path, 0, sizeof(path));
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asDac[1].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		_McDrv_Ctrl(MCDRV_SET_PATH, &path, 0);
 
-#ifdef MC1N2_LOAD_PRD_FOR_SPL
-        if (isLoadPRDconfig) {
-                LoadPRDFile();
-                isLoadPRDconfig = 0;
-        }
-#endif 
+		_McDrv_Ctrl(MCDRV_SET_DIGITALIO, &dioorg, MCDRV_DIO0_COM_UPDATE_FLAG);
+	}
 
-        memset(&path, 0, sizeof(path));
+	memset(&path, 0, sizeof(path));
 
-        CODECDBG("path_num = %d",path_num);
+	CODECDBG("path_num %d",path_num);   //yosef add
+ //   LOGD("\n ALSA OPEN mode %d,device %d \n",mode,device);
+//LOGV("[%s], codecid=0x%x, addr=0x%x",__func__,codecid, addr);
+ 
+	switch(path_num) {
+	case PLAYBACK_OFF:
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		break;
+	case RCV:
 
-        switch (path_num) {
-        case PLAYBACK_OFF:
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                break;
+            if (MC1N2_VOIP_TYPE_QIK!=mc1n2_voip_get_voip_type())
+            {
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Rcv, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackRcv, 0);
 
-        case RCV:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Rcv, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackRcv, 0);
+            if(MC1N2_VOIP_STATUS_CONNECT==mc1n2_voip_get_status())
+            {
+                 lastUpdate_by_set_path_playback=1;    
+                mc1n2_voip_set_playback_parameters(RCV);                  
+            } else {
+                #ifdef VOL_ADJUST_TEST    // yosef added for headphone vol test
+	        	mc1n2_write_reg(codec, MC1N2_RCV_VOL_L, RCV_VOL);
+        		mc1n2_write_reg(codec, MC1N2_RCV_VOL_R, RCV_VOL);
+	        	#endif
+            }
 
-#ifdef CONFIG_VOIP
-                if (mc1n2_get_voip_status()) {
-                        mc1n2_set_voip_playback_parameters(RCV);
-                        mc1n2_set_voip_mic_parameters(MIC_MAIN);
-                } else
-#endif
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON | MCDRV_SRC5_DAC_R_ON;
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+            }
+		break;
+	case SPK:
+    //        _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Spk, 0x1FF);
+            _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackSpk, 0);
+            
+            if(MC1N2_VOIP_STATUS_CONNECT==mc1n2_voip_get_status())
+            {
+                 lastUpdate_by_set_path_playback=1;    
+                mc1n2_voip_set_playback_parameters(SPK);       
+                lastUpdate_by_set_path_mic=1;
+                mc1n2_voip_set_mic_parameters(MIC_MAIN);
+            } else 
+            {
+				#ifdef CONFIG_TDMB	// VenturiGB_Usys_jypark 2011.08.08 - DMB [[
+                if( MC1N2_VOIP_CAMERA_OFF==mcn1n2_voip_get_camera_status()&&isDMBActivate==0)
+				#else				// VenturiGB_Usys_jypark 2011.08.08 - DMB ]]
+                if( MC1N2_VOIP_CAMERA_OFF==mcn1n2_voip_get_camera_status())
+				#endif
                 {
-                        mc1n2_write_reg(codec, MC1N2_RCV_VOL_L, RCV_VOL);
-                        mc1n2_write_reg(codec, MC1N2_RCV_VOL_R, RCV_VOL);
-                        CODECDBG("RCV : gain(%d)", RCV_VOL);
-                }
-                
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON | MCDRV_SRC5_DAC_R_ON;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                break;
-
-        case SPK:
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackSpk, 0);
-
-#ifdef CONFIG_VOIP
-                if (mc1n2_get_voip_status()) {
-                        mc1n2_set_voip_playback_parameters(SPK);
-                        mc1n2_set_voip_mic_parameters(MIC_MAIN);
-
-                        path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                        CODECDBG("VoIP SPK : Turn off right speaker");
-                } else 
-#endif
+                                  
+                #ifdef VOL_ADJUST_TEST    // yosef added for headphone vol test
+            		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, gAnalVolSpeakerIndex[mc1n2->analog_vol]);
+                     mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, gAnalVolSpeakerIndex[mc1n2->analog_vol]);
+                      CODECDBG ("analog volume=%d", gAnalVolSpeakerIndex[mc1n2->analog_vol]);
+                #endif
+                }else 
                 {
-                        mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, SPEAKER_VOL);
-                        mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, SPEAKER_VOL);
-                        CODECDBG("SPK : gain(%d)", SPEAKER_VOL);
-
-                        path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;                
+                    mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, 58);
+                    mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, 58);
+                    CODECDBG ("analog volume camera =%d", SPEAKER_VOL);
                 }
+            }
 
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+           if(MC1N2_VOIP_STATUS_CONNECT==mc1n2_voip_get_status())
+           {   
+                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON | MCDRV_SRC5_DAC_R_OFF;
+                  CODECDBG("turn off right speaker in mc1n2");
+            }else 
+            {
+               path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;                
                 path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                break;
+           }
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+//		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
 
-        case HP:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Hp, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackHp, 0);
+		break;
 
-#ifdef CONFIG_VOIP
-                if (mc1n2_get_voip_status()) {
-                        mc1n2_set_voip_playback_parameters(HP);
-                        mc1n2_set_voip_mic_parameters(MIC_SUB);
-                } else 
-#endif
-                {
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-                        mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, gAnalVolHpIndex[mc1n2->analog_vol]);
-                        mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, gAnalVolHpIndex[mc1n2->analog_vol]);
-                        CODECDBG("HP : gain(%d)", gAnalVolHpIndex[mc1n2->analog_vol]);
+	case HP:
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Hp, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackHp, 0);
+
+             if(MC1N2_VOIP_STATUS_CONNECT==mc1n2_voip_get_status())
+            {
+                 lastUpdate_by_set_path_playback=1;    
+                mc1n2_voip_set_playback_parameters(HP);              
+                lastUpdate_by_set_path_mic=1;
+                mc1n2_voip_set_mic_parameters(MIC_SUB);
+            } else 
+            {
+				#ifdef CONFIG_TDMB	// VenturiGB_Usys_jypark 2011.08.08 - DMB [[
+				if(isDMBActivate==0)
+				{
+				#endif				// VenturiGB_Usys_jypark 2011.08.08 - DMB ]]
+        		#ifdef VOL_ADJUST_TEST    // yosef added for headphone vol test
+	        	mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, gAnalVolHpIndex[mc1n2->analog_vol]);
+	  	     mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, gAnalVolHpIndex[mc1n2->analog_vol]);
+               CODECDBG ("analog volume=%d", gAnalVolHpIndex[mc1n2->analog_vol]);
+        		#endif
+				#ifdef CONFIG_TDMB	// VenturiGB_Usys_jypark 2011.08.08 - DMB [[
+				}else 
+				{
+					mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, HEADPHONE_VOL_KOR);
+					mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, HEADPHONE_VOL_KOR); 
+					CODECDBG ("for dmb max volume =%d\n", HEADPHONE_VOL_KOR);            	
+				}
+				#endif				// VenturiGB_Usys_jypark 2011.08.08 - DMB ]]
+            }
+
+		if(MC1N2_VOIP_STATUS_DISCONNECT==mc1n2_voip_get_status())
+		{
+		   	if(!record_state)
+			{
+				path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
+				path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
+		   	}
+		}
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_OFF;
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_OFF;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+#ifdef LINE_OUT_TEST
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
 #else
-                        mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_HEADPHONE_VOL);
-                        mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_HEADPHONE_VOL);
-                        CODECDBG("HP : gain(%d)", g_HEADPHONE_VOL);
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+
 #endif
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+
+                if (MC1N2_VOIP_STATUS_DISCONNECT != mc1n2_voip_get_status()) {
+                        path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON; 
+                        path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF; 
+                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF; 
+                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF; 
+                        path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON;  // yosef added test for mic 
+                        CODECDBG("set mic path for voip");   //yosef add 
                 }
+		break;
+        
+	case BT:
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		break;
+	case DUAL:
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Dual, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackDual, 0);
 
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_OFF;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_OFF;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                break;
+		#ifdef VOL_ADJUST_TEST    // yosef added for headphone vol test
+		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, DUAL_VOL_FOR_SPEAKER);
+		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, DUAL_VOL_FOR_SPEAKER);
+		mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_DUAL_VOL_FOR_HEADPHONE);
+		mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_DUAL_VOL_FOR_HEADPHONE);
+		#endif
 
-        case BT:
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                break;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		break;
+	case RING_SPK:
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Spk, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackRingSpk, 0);
 
-        case DUAL:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Dual, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackDual, 0);
+       	#ifdef VOL_ADJUST_TEST    // yosef added for headphone vol test
+		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, gAnalVolSpeakerIndex[mc1n2->analog_vol]);
+           mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, gAnalVolSpeakerIndex[mc1n2->analog_vol]);
+           CODECDBG ("analog volume=%d", gAnalVolSpeakerIndex[mc1n2->analog_vol]);
+		#endif
 
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, DUAL_VOL_FOR_SPEAKER);
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, DUAL_VOL_FOR_SPEAKER);
-                CODECDBG("DUAL : SPK gain(%d)", DUAL_VOL_FOR_SPEAKER);
-                
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_DUAL_VOL_FOR_HEADPHONE);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_DUAL_VOL_FOR_HEADPHONE);
-                CODECDBG("DUAL : HP gain(%d)", g_DUAL_VOL_FOR_HEADPHONE);
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		break;
+	case RING_HP:
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Hp, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackRingHp, 0);
 
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                break;
+         	#ifdef VOL_ADJUST_TEST    // yosef added for headphone vol test
+        	mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, gAnalVolHpIndex[mc1n2->analog_vol]);
+	  	mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, gAnalVolHpIndex[mc1n2->analog_vol]);
+		#endif
 
-        case RING_SPK:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Spk, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackRingSpk, 0);
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		break;
+	case RING_DUAL:
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Dual, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackRingDual, 0);
+        
+		#ifdef VOL_ADJUST_TEST    // yosef added for headphone vol test
+		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, gAnalVolSpeakerIndex[mc1n2->analog_vol]);
+           mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, gAnalVolSpeakerIndex[mc1n2->analog_vol]);
+          mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, gAnalVolHpIndex[mc1n2->analog_vol]);
+           mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, gAnalVolHpIndex[mc1n2->analog_vol]);
 
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, SPEAKER_VOL);
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, SPEAKER_VOL);
-                CODECDBG("RING_SPK : SPK gain(%d)", SPEAKER_VOL);
+		#endif
 
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                break;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		break;
+	case EXTRA_DOCK_SPEAKER:
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Dock, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackDock, 0);
 
-        case RING_HP:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Hp, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackRingHp, 0);
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		break;
+	case TV_OUT:
+		/* enter HDMI mode */
+		_McDrv_Ctrl(MCDRV_GET_DIGITALIO, &dioorg, 0);
+		diohdmi.asPortInfo[0].sDioCommon.bMasterSlave = MCDRV_DIO_MASTER;
+		diohdmi.asPortInfo[0].sDioCommon.bAutoFs = MCDRV_AUTOFS_ON;
+		diohdmi.asPortInfo[0].sDioCommon.bFs = MCDRV_FS_44100;
+		diohdmi.asPortInfo[0].sDioCommon.bBckFs = MCDRV_BCKFS_32;
+		diohdmi.asPortInfo[0].sDioCommon.bInterface = MCDRV_DIO_DA;
 
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, gAnalVolHpIndex[mc1n2->analog_vol]);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, gAnalVolHpIndex[mc1n2->analog_vol]);
-                CODECDBG("RING_HP : HP gain(%d)", gAnalVolHpIndex[mc1n2->analog_vol]);
-#else
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_HEADPHONE_VOL);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_HEADPHONE_VOL);
-                CODECDBG("RING_HP : HP gain(%d)", g_HEADPHONE_VOL);
-#endif
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                break;
+		memset(&path, 0, sizeof(path));
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asDac[1].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
 
-        case RING_DUAL:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Dual, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackRingDual, 0);
+		_McDrv_Ctrl(MCDRV_SET_PATH, &path, 0);
+		_McDrv_Ctrl(MCDRV_SET_DIGITALIO, &diohdmi, MCDRV_DIO0_COM_UPDATE_FLAG);
 
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, SPEAKER_VOL);
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, SPEAKER_VOL);
-                
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, gAnalVolHpIndex[mc1n2->analog_vol]);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, gAnalVolHpIndex[mc1n2->analog_vol]);
-                CODECDBG("RING_DUAL : SPK gain(%d), HP gain(%d)", SPEAKER_VOL, gAnalVolHpIndex[mc1n2->analog_vol]);
-#else
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_HEADPHONE_VOL);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_HEADPHONE_VOL);
-                CODECDBG("RING_DUAL : SPK gain(%d), HP gain(%d)", SPEAKER_VOL, g_HEADPHONE_VOL);
-#endif
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                break;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		break;
+	default:
+		break;
+	}
 
-        case EXTRA_DOCK_SPEAKER:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Dock, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_PlaybackDock, 0);
+	mc1n2_set_path(codec, &path);
 
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                break;
+	mc1n2->playback_path = path_num;
 
-        case TV_OUT:
-                /* exit HDMI mode */
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asDac[1].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                _McDrv_Ctrl(MCDRV_SET_PATH, &path, 0);
+     /* venturi project add by park dong yun reset call path */
+     mc1n2->call_path=PLAYBACK_OFF;
 
-                _McDrv_Ctrl(MCDRV_SET_DIGITALIO, &dioorg, MCDRV_DIO0_COM_UPDATE_FLAG);
-                
-                /* enter HDMI mode */
-                _McDrv_Ctrl(MCDRV_GET_DIGITALIO, &dioorg, 0);
-                diohdmi.asPortInfo[0].sDioCommon.bMasterSlave = MCDRV_DIO_MASTER;
-                diohdmi.asPortInfo[0].sDioCommon.bAutoFs = MCDRV_AUTOFS_ON;
-                diohdmi.asPortInfo[0].sDioCommon.bFs = MCDRV_FS_44100;
-                diohdmi.asPortInfo[0].sDioCommon.bBckFs = MCDRV_BCKFS_32;
-                diohdmi.asPortInfo[0].sDioCommon.bInterface = MCDRV_DIO_DA;
-
-                memset(&path, 0, sizeof(path));
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asDac[1].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-
-                _McDrv_Ctrl(MCDRV_SET_PATH, &path, 0);
-                _McDrv_Ctrl(MCDRV_SET_DIGITALIO, &diohdmi, MCDRV_DIO0_COM_UPDATE_FLAG);
-
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asLout1[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asLout1[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                break;
-
-        default:
-                break;
-        }
-
-        mc1n2_set_path(codec, &path);
-
-        mc1n2->playback_path = path_num;
-
-        /* Reset call path */
-        mc1n2->call_path = PLAYBACK_OFF;
-
-        return 0;
+	gpio_set_value(GPIO_MUTE_ON, 1);
+    lastUpdate_by_set_path_mic=1;
+  
+	return 0;
 }
 
 static int mc1n2_get_call_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
@@ -2373,181 +2432,170 @@ static int mc1n2_get_call_path(struct snd_kcontrol *kcontrol, struct snd_ctl_ele
 
 static int mc1n2_set_call_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-        int path_num = ucontrol->value.integer.value[0];
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
-        MCDRV_PATH_INFO path;
+	int path_num = ucontrol->value.integer.value[0];
+	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
+	MCDRV_PATH_INFO path;
+
+#if 0
+  
+     venturi project removed by park dong yun for VOIP Setting 
+	if(mc1n2->call_path == path_num) {
+		/* same as the previous setting, nothing to do */
+		return 0;
+	}
+#endif 
+
+	memset(&path, 0, sizeof(path));
+      CODECDBG("path_num %d",path_num);   //yosef add
+
+	switch(path_num) {
+	case PLAYBACK_OFF:
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR1_BLOCK] = MCDRV_SRC3_DIR1_OFF;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
+		break;
+	case SPK:
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Spk, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_CallSpk, 0);
+
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR1_BLOCK] = MCDRV_SRC3_DIR1_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		switch(mc1n2->mic_path) {
+		case MIC_MAIN:
+			path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
+			break;
+		case MIC_SUB:
+			path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
+			path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
+			break;
+		default:
+			path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
+			break;
+		}
+		break;
+	case RCV:
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Rcv, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_CallRcv, 0);
+
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR1_BLOCK] = MCDRV_SRC3_DIR1_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON | MCDRV_SRC5_DAC_R_ON;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		switch(mc1n2->mic_path) {
+		case MIC_MAIN:
+			path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
+			break;
+		case MIC_SUB:
+			path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
+			path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
+			break;
+		default:
+			path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
+			break;
+		}
+		break;
+	case HP:
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Hp, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_CallHp, 0);
+
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR1_BLOCK] = MCDRV_SRC3_DIR1_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
+		switch(mc1n2->mic_path) {
+		case MIC_MAIN:
+			path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
+			break;
+		case MIC_SUB:
+			path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
+			path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
+			break;
+		default:
+			path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+			path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
+			break;
+		}
+		break;
+	case BT:
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Bt, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_CallBt, 0);
+
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR1_BLOCK] = MCDRV_SRC3_DIR1_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
+		path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
+		path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_ON;
+		break;
+	default:
+		break;
+	}
 
 
-#ifdef CONFIG_VOIP
-        if (mc1n2_get_voip_status()) {
-                CODECDBG("VoIP path = %d", path_num);
-                mc1n2_set_playback_path(kcontrol, ucontrol);
-                return 0;
-        }
-#endif
+	mc1n2_set_path(codec, &path);
 
-        memset(&path, 0, sizeof(path));
-        CODECDBG("path_num %d",path_num);
+	mc1n2->call_path = path_num;
+     /* venturi add by park dong yun reset playback back */
+     mc1n2->playback_path=PLAYBACK_OFF;
+     lastUpdate_by_set_path_mic=1;
+     lastUpdate_by_set_path_playback=1;
 
-        switch (path_num) {
-        case PLAYBACK_OFF:
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR1_BLOCK] = MCDRV_SRC3_DIR1_OFF;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
-                break;
-
-        case SPK:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Spk, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_CallSpk, 0);
-
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR1_BLOCK] = MCDRV_SRC3_DIR1_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-
-                switch(mc1n2->mic_path) {
-                case MIC_MAIN:
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-                        break;
-                        
-                case MIC_SUB:
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-                        break;
-                        
-                default:
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-                        break;
-                }
-                break;
-
-        case RCV:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Rcv, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_CallRcv, 0);
-
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR1_BLOCK] = MCDRV_SRC3_DIR1_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON | MCDRV_SRC5_DAC_R_ON;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-
-                switch(mc1n2->mic_path) {
-                case MIC_MAIN:
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-                        break;
-                
-                case MIC_SUB:
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-                        break;
-                
-                default:
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-                        break;
-                }
-                break;
-
-        case HP:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Hp, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_CallHp, 0);
-
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR1_BLOCK] = MCDRV_SRC3_DIR1_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_OFF;
-
-                switch(mc1n2->mic_path) {
-                case MIC_MAIN:
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-                        break;
-                
-                case MIC_SUB:
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-                        break;
-                
-                default:
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                        path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-                        break;
-                }
-                break;
-
-        case BT:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Bt, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_CallBt, 0);
-
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR1_BLOCK] = MCDRV_SRC3_DIR1_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asRcOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF | MCDRV_SRC5_DAC_R_OFF;
-                path.asDit2[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
-                path.asDit1[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_ON;
-                break;
-
-        default:
-                break;
-        }
-
-        mc1n2_set_path(codec, &path);
-
-        mc1n2->call_path = path_num;
-
-        /* Reset playback back */
-        mc1n2->playback_path = PLAYBACK_OFF;
-
-        return 0;
+      
+	return 0;
 }
 
 static int mc1n2_get_mic_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
@@ -2562,112 +2610,127 @@ static int mc1n2_get_mic_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem
 
 static int mc1n2_set_mic_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-        int path_num = ucontrol->value.integer.value[0];
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
-        MCDRV_PATH_INFO path;
+	int path_num = ucontrol->value.integer.value[0];
+	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
+	MCDRV_PATH_INFO path;
+//	static int number_i =0;
+	
+     CODECDBG("mc1n2->mic_path= %d, path_num= %d",mc1n2->mic_path,path_num);   //yosef add
 
-
-        CODECDBG("path_num = %d", path_num);
-
-        memset(&path, 0, sizeof(path));
-
-        switch (path_num) {
-        case MIC_MAIN:
-#ifdef CONFIG_VOIP
-                if (mc1n2_get_voip_status()) {
-                        CODECDBG("VoIP : MIC_MAIN");
-                        mc1n2_set_voip_mic_parameters(MIC_MAIN);
-                } else 
-#endif
-                {
-
-#ifdef MP3_SNDCONFIG
-                        mc1n2_write_reg(codec, MC1N2_MIC1_GAIN, gMicGainTest);
-                        mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, gMicADCTest);
-                        mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, gMicADCTest);
-                        CODECDBG("TEST MIC_MAIN : Mic1Gain=%d, MicADC=%d ", gMicGainTest, gMicADCTest);
-#else
-                        if (voice_recognition_state) {
-                                mc1n2_write_reg(codec, MC1N2_MIC1_GAIN, gMicGain);
-                                mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, gMicADC);
-                                mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, gMicADC);
-                                CODECDBG("Voice Recognition MIC_MAIN : Mic1Gain=%d, MicADC=%d", gMicGain, gMicADC);
-                        } else {
-                                mc1n2_write_reg(codec, MC1N2_MIC1_GAIN, MIC1_GAIN_TEST);
-                                mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, MC1N2_MIC1_ADC_VOL);
-                                mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, MC1N2_MIC1_ADC_VOL);
-                                CODECDBG("MIC_MAIN : Mic1Gain=%d, MicADC=%d", MIC1_GAIN_TEST, MC1N2_MIC1_ADC_VOL);
-                        }
-#endif                   
-
-                        msleep (50);
-
-                        path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON; 
-                        path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF; 
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
-                        path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC3_OFF;
-                }
-                break; 
-
-        case MIC_SUB:
-#ifdef CONFIG_VOIP
-                if (mc1n2_get_voip_status()) {
-                        CODECDBG("VoIP : MIC_SUB");
-                        mc1n2_set_voip_mic_parameters(MIC_SUB);
-                } else 
-#endif
-                {
-#ifdef MP3_SNDCONFIG
-                        mc1n2_write_reg(codec, MC1N2_MIC2_GAIN, gMicGainTest); 
-                        mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, gMicADCTest);
-                        mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, gMicADCTest);
-                        CODECDBG("TEST MIC_SUB : Mic2Gain=%d, MicADC=%d", gMicGainTest, gMicADCTest);
-#else
-                        mc1n2_write_reg(codec, MC1N2_MIC2_GAIN, g_MIC2_GAIN_TEST);
-                        mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, g_MC1N2_MIC2_ADC_VOL);
-                        mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, g_MC1N2_MIC2_ADC_VOL);
-                        CODECDBG("MIC_SUB : Mic2Gain=%d, MicADC=%d", g_MIC2_GAIN_TEST, g_MC1N2_MIC2_ADC_VOL);                        
-#endif 
-
-                        msleep(50);
-
-                        path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON; 
-                        path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF; 
-                        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF; 
-                        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF; 
-                        path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON;
-                }
-                break;
-
-        case MIC_BT:
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_ON;
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                break;
-
-        default:
-                break;
-        }
-
-        mc1n2_set_path(codec, &path);
+    /* venturi add by park dong yun for voip specific control 2011.01.3*/
+    if(MC1N2_VOIP_STATUS_DISCONNECT==mc1n2_voip_get_status())
+    {
+        record_state = 1;
         
-        mc1n2->mic_path = path_num;
+        #ifdef VOL_ADJUST_TEST    // yosef added for mic gain test
+        if (CMD_RECOGNITION_ACTIVE==gPathNum)
+        {
+            mc1n2_write_reg(codec, MC1N2_MIC1_GAIN, gMicGain);
+            /* do not control mic 2 gain update by park dong yun for voip*/		
+            mc1n2_write_reg(codec, MC1N2_MIC2_GAIN, gMicGain); 
+            CODECDBG ("Voice Search : gMicGain=%d",gMicGain);
+         }
+        else
+        {	
+		#ifdef MP3_SNDCONFIG
+			mc1n2_write_reg(codec, MC1N2_MIC1_GAIN, gMicGainTest);
+                 /* do not control mic 2 gain update by park dong yun for voip*/
+			mc1n2_write_reg(codec, MC1N2_MIC2_GAIN, gMicGainTest); 
+			CODECDBG ("gMicGain=%d ",gMicGainTest);
+		#else
+			mc1n2_write_reg(codec, MC1N2_MIC1_GAIN, MIC1_GAIN_TEST);
+                /* do not control mic 2 gain update by park dong yun for voip*/
+			mc1n2_write_reg(codec, MC1N2_MIC2_GAIN, g_MIC2_GAIN_TEST);	
+			CODECDBG ("gMicGain=%d ",g_MIC2_GAIN_TEST);	
+		#endif 
+        }
+        #endif
+    }
+memset(&path, 0, sizeof(path));
+
+    switch(path_num) {
+        case MIC_MAIN: 
+            if(MC1N2_VOIP_STATUS_DISCONNECT==mc1n2_voip_get_status()) 
+            {
+                if (CMD_RECOGNITION_ACTIVE==gPathNum)
+                {
+                    mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, gMicADC);  //yosef added for mic vol 
+                    mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, gMicADC);  //yosef added for mic vol 
+                    CODECDBG ("gMicADC=%d ", gMicADC);
+                }
+                else
+                {
+                    #ifdef MP3_SNDCONFIG
+                    mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, gMicADCTest);  //yosef added for mic vol 
+                    mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, gMicADCTest);  //yosef added for mic vol 
+                    CODECDBG ("gMicADC=%d ", gMicADCTest);
+                    #else 
+                    mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, MC1N2_MIC1_ADC_VOL);  //yosef added for mic vol 
+                    mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, MC1N2_MIC1_ADC_VOL);  //yosef added for mic vol 
+                    #endif                   
+                    CODECDBG ("gMicADC=%d ", MC1N2_MIC1_ADC_VOL);			 
+                }
+            }    else 
+            {
+                  lastUpdate_by_set_path_mic=1; 
+                  mc1n2_voip_set_mic_parameters(MIC_MAIN);                  
+            }
+           
+            msleep (50);
+            path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON; 
+            path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF; 
+            path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
+            path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
+            path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC3_OFF;  // yosef added test for mic 
+		 CODECDBG("MIC_MAIN");
+		 break; 
+         
+        case MIC_SUB: 
+            if(MC1N2_VOIP_STATUS_DISCONNECT==mc1n2_voip_get_status()) 
+            {                
+                mc1n2_write_reg(codec, MC1N2_MIC2_GAIN,   g_MIC2_GAIN_TEST);
+                mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, g_MC1N2_MIC2_ADC_VOL); //yosef added for mic vol 
+		     mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, g_MC1N2_MIC2_ADC_VOL); //yosef added for mic vol   
+            }else 
+            { 
+                lastUpdate_by_set_path_mic=1; 
+                mc1n2_voip_set_mic_parameters(MIC_SUB);
+             }
+    
+            msleep(50);
+		  
+            path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON; 
+            path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF; 
+            path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF; 
+            path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF; 
+            path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON;  // yosef added test for mic 
+            CODECDBG("MIC_SUB");
+           
+		 break;
+	case MIC_BT:
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_ON;
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
+                CODECDBG("MIC_BT");
+		break;
+	default:
+		break;
+	}
+
+	mc1n2_set_path(codec, &path);
+	mc1n2->mic_path = path_num;
 
         /* For avoiding pop noise when start google voice search */
-        if ((mc1n2->mic_path == MIC_MAIN) 
-                && (voice_recognition_state)
-#ifdef CONFIG_VOIP
-                && !mc1n2_get_voip_status()
-#endif
-        ) {
-                CODECDBG("Set delay for voice recognition");
-                msleep(200);
+        if (MC1N2_VOIP_STATUS_DISCONNECT == mc1n2_voip_get_status()) {
+                if ((mc1n2->mic_path == MIC_MAIN) && (CMD_RECOGNITION_ACTIVE == gPathNum)) {
+                        CODECDBG("Set delay for voice recognition");
+                        msleep(200);
+                }
         }
-
-        return 0;
+        lastUpdate_by_set_path_playback=1;
+	return 0;
 }
 
 static int mc1n2_get_fmradio_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
@@ -2682,209 +2745,220 @@ static int mc1n2_get_fmradio_path(struct snd_kcontrol *kcontrol, struct snd_ctl_
 
 static int mc1n2_set_fmradio_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-        int path_num = ucontrol->value.integer.value[0];
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
-        MCDRV_PATH_INFO path;
-        MCDRV_VOL_INFO vol;
+	int path_num = ucontrol->value.integer.value[0];
+	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
+	MCDRV_PATH_INFO path;
+	MCDRV_VOL_INFO vol;
+	SINT16 volume_restore,vol_count;
+	char fm_on_delay = 0;
 
-
-        CODECDBG("mc1n2_set_fmradio_path = %d ",path_num);
-
-        /* same as the previous setting, nothing to do */
-        if (mc1n2->fmr_path == path_num) {
-                CODECDBG("mc1n2_set_fmradio_path returned");
-                return 0;
-        }
-
-        memset(&path, 0, sizeof(path));
-
-        switch (path_num) {
-        case FMR_OFF:
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_OFF;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_OFF;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-
-                fmradio_state = 0;
-                break;
-
-        case FMR_SPK:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Spk, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_FmMixSpk, 0);
-
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, SPEAKER_VOL_FM);
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, SPEAKER_VOL_FM);
-                CODECDBG("FMR_SPK : SPK gain(%d)", SPEAKER_VOL_FM);
-
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_ON;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_ON;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-
-                fmradio_state = 1;
-                break;
-
-        case FMR_HP:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Hp, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_FmMixHp, 0);
-
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_HEADPHONE_VOL_FM);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_HEADPHONE_VOL_FM);
-                CODECDBG("FMR_HP : HP gain(%d)", g_HEADPHONE_VOL_FM);
-                
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_ON;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_ON;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-
-                fmradio_state = 1;
-                break;
-
-        case FMR_SPK_MIX:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Spk, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_FmMixSpk, 0);
-
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, SPEAKER_VOL_FM);
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, SPEAKER_VOL_FM);
-                CODECDBG("FMR_SPK_MIX : SPK gain(%d)", SPEAKER_VOL_FM);
-
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_ON;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_ON;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-
-                fmradio_state = 1;
-                break;
-
-        case FMR_HP_MIX:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Hp, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_FmMixHp, 0);
-
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_HEADPHONE_VOL_FM);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_HEADPHONE_VOL_FM);
-                CODECDBG("FMR_HP_MIX : HP gain(%d)", g_HEADPHONE_VOL_FM);
-                
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_ON;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_ON;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-
-                fmradio_state = 1;
-                break;
-
-        case FMR_DUAL_MIX:
-                _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Dual, 0x1FF);
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_FmMixDual, 0);
-
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, SPEAKER_VOL_FM);
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, SPEAKER_VOL_FM);
-                CODECDBG("FMR_DUAL_MIX : SPK gain(%d)", SPEAKER_VOL_FM);
-                
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_HEADPHONE_VOL_FM-18);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_HEADPHONE_VOL_FM-18);
-                CODECDBG("FMR_DUAL_MIX : HP gain(%d)", g_HEADPHONE_VOL_FM);
-
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_OFF;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_OFF;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
-                path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
-                path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
-                path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
-                path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-                path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
-                path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
-
-                fmradio_state = 1;
-                break;
-
-        default:
-                break;
-        }
-
-        mc1n2_set_path(codec, &path);
-
-        if (path_num == FMR_OFF) {
-                memset(&vol, 0, sizeof(vol));
-
-                vol.aswD_Ad0[0] = cvol[mc1n2->ad_vol_l];
-                vol.aswD_Ad0[1] = cvol[mc1n2->ad_vol_l];
-
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&vol, 0);
-        } else {
-                if (path_num == FMR_HP || path_num == FMR_SPK)	{
-                        mc1n2->ad_vol_l = FM_ADC_VOL;
-                        mc1n2->ad_vol_r = FM_ADC_VOL;
-
-                        mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, FM_ADC_VOL);
-                        mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, FM_ADC_VOL);
-
-#ifdef CONFIG_FMRADIO_CODEC_GAIN
-                        mc1n2->vol_store.aswA_Ad0[0] = mc1n2_vol_fm[mc1n2->fm_volume];
-                        mc1n2->vol_store.aswA_Ad0[1] = mc1n2_vol_fm[mc1n2->fm_volume];
-#else
-                        mc1n2->vol_store.aswA_Ad0[0] = FM_FIXED_GAIN;
-                        mc1n2->vol_store.aswA_Ad0[1] = FM_FIXED_GAIN;
+     CODECDBG("mc1n2_set_fmradio_path= %d ",path_num);    //yosef add
+#if 1    // yosef blocked to test medai -> fmradio issue.
+	if(mc1n2->fmr_path == path_num) {
+		CODECDBG(" mc1n2_set_fmradio_path returned ");    //yosef add
+		/* same as the previous setting, nothing to do */
+		return 0;
+	}
 #endif
 
-                        CODECDBG("MC1N2_ADC_VOL=%d ",FM_ADC_VOL);
-                }
+	HP_SPK_CHG = 0;
+	if((mc1n2->fmr_path == FMR_SPK && path_num == FMR_HP) || (mc1n2->fmr_path == FMR_HP && path_num == FMR_SPK))
+	{
+		HP_SPK_CHG = 1;
+	}	
+	memset(&path, 0, sizeof(path));
+	if(fmradio_state == 0)
+	{
+		fm_on_delay = 1;
+	}
+	fmradio_state = 1;
+	
+	switch(path_num) {
+	case FMR_OFF:
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_OFF;
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_OFF;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		codec_using = 0;
+		fmradio_state = 0;
+		break;
+		
+	case FMR_SPK:
+		if(HP_SPK_CHG)
+			gpio_set_value(GPIO_MUTE_ON, 0);
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Spk, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_FmMixSpk, 0);
 
-#ifdef CONFIG_FMRADIO_CODEC_GAIN
-                McDrv_Ctrl_set_fm_vol(mc1n2->fm_volume);
-#else
-                McDrv_Ctrl_set_fixed_fm_vol();
-#endif
-        }
+		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, SPEAKER_VOL_FM);
+		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, SPEAKER_VOL_FM);
 
-        mc1n2->fmr_path = path_num;
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_ON;
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_ON;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		codec_using = 1;
+		break;
 
-        CODECDBG("mc1n2_set_fmradio_path end= %d ",path_num);
+	case FMR_HP:
+		//if(HP_SPK_CHG)
+		gpio_set_value(GPIO_MUTE_ON, 0);
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Hp, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_FmMixHp, 0);
 
-        return 0;
+		mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_HEADPHONE_VOL_FM);
+		mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_HEADPHONE_VOL_FM);
+
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_ON;
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_ON;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		codec_using = 1;
+		break;
+
+	case FMR_SPK_MIX:
+ 		gpio_set_value(GPIO_MUTE_ON, 0);
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Spk, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_FmMixSpk, 0);
+
+		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, SPEAKER_VOL_FM);
+		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, SPEAKER_VOL_FM);
+
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_ON;
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_ON;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		codec_using = 1;
+		break;
+		
+	case FMR_HP_MIX:
+ 		gpio_set_value(GPIO_MUTE_ON, 0);
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Hp, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_FmMixHp, 0);
+
+		mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_HEADPHONE_VOL_FM);
+		mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_HEADPHONE_VOL_FM);
+
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_ON;
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_ON;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		codec_using = 1;
+		break;
+		
+	case FMR_DUAL_MIX:
+ 		gpio_set_value(GPIO_MUTE_ON, 0);
+		_McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Dual, 0x1FF);
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_FmMixDual, 0);
+		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, SPEAKER_VOL_FM);
+		mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, SPEAKER_VOL_FM);
+		mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, g_HEADPHONE_VOL_FM);
+		mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, g_HEADPHONE_VOL_FM);
+		
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_OFF;
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_OFF;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
+		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_ON;
+		path.asAe[0].abSrcOnOff[MCDRV_SRC_MIX_BLOCK] = MCDRV_SRC6_MIX_ON;
+		path.asDac[0].abSrcOnOff[MCDRV_SRC_AE_BLOCK] = MCDRV_SRC6_AE_ON;
+		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		path.asHpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_ON;
+		path.asHpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_ON;
+		codec_using = 1;
+		break;
+	}
+
+ 	mc1n2_set_path(codec, &path);
+
+	if(path_num == FMR_OFF) {
+		memset(&vol, 0, sizeof(vol));
+		vol.aswD_Ad0[0] = cvol[mc1n2->ad_vol_l];
+		vol.aswD_Ad0[1] = cvol[mc1n2->ad_vol_l];
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&vol, 0);
+		fmradio_state = 0;
+ 	}
+	else if(path_num == FMR_DUAL_MIX)
+	{
+		msleep(10);
+		gpio_set_value(GPIO_MUTE_ON, 1);
+ 	}
+	else
+	{
+	//	if(!HP_SPK_CHG)
+	//		gpio_set_value(GPIO_MUTE_ON, 1);
+		//if(mc1n2->ad_vol_l != FM_ADC_VOL){		// just 1 time executed
+		if (path_num == FMR_HP || path_num ==  FMR_SPK)	{
+			mc1n2->ad_vol_l=FM_ADC_VOL;
+			mc1n2->ad_vol_r=FM_ADC_VOL;
+			mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, FM_ADC_VOL);
+			mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, FM_ADC_VOL);
+			mc1n2->vol_store.aswA_Ad0[0]=mc1n2_vol_fm[fm_volume_backup];
+			mc1n2->vol_store.aswA_Ad0[1]=mc1n2_vol_fm[fm_volume_backup];
+			CODECDBG("MC1N2_ADC_VOL=%d ",FM_ADC_VOL);    //yosef add
+			}
+
+ 		volume_restore=mc1n2->vol_store.aswA_Ad0[0];
+		for(vol_count = 0; vol_count < 31 ; vol_count++){
+				if(volume_restore == mc1n2_vol_fm[vol_count])
+				break;
+			}	
+		CODECDBG("volume_restore=mc1n2->vol_store.aswA_Ad0[0]= %d ",vol_count);    //yosef add
+		if(fm_on_delay)
+		{
+			msleep(10);
+			HP_SPK_CHG = 1;
+		}
+		//gpio_set_value(GPIO_MUTE_ON, 1);
+		McDrv_Ctrl_fm(/*vol_count*/fm_volume_backup);
+	}
+
+	mc1n2->fmr_path = path_num;
+	CODECDBG("mc1n2_set_fmradio_path end= %d ",path_num);    //yosef add
+
+	return 0;
 }
 
-static int mc1n2_fmradio_path_parameters(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+static int mc1n2_fmradio_path_close(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec = mc1n2_get_codec_data();
 	struct mc1n2_data *mc1n2 = codec->drvdata;
 	int control_data = ucontrol->value.integer.value[0];
-
+	int err;
 
 	if (!fmradio_state) {
                 CODECDBG("Already closed path, %d",control_data);
@@ -2906,7 +2980,10 @@ static int mc1n2_fmradio_path_parameters(struct snd_kcontrol *kcontrol, struct s
                 
 	case CMD_FMR_FLAG_CLEAR:
 	case CMD_FMR_END:
+                gpio_set_value(GPIO_MUTE_ON, 0);
+
 		mc1n2->fmr_path = FMR_OFF;
+		codec_using = 0;
 		fmradio_state = 0;
                 fmradio_closed = 1;
                 CODECDBG("Set fmradio_closed flag");
@@ -2919,183 +2996,37 @@ static int mc1n2_fmradio_path_parameters(struct snd_kcontrol *kcontrol, struct s
 	return 0;
 }
 
-static int mc1n2_set_recognition_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+// 11.02.19 JinoKang for Voice Search
+static int mc1n2_RECOGNITION_Set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
 	MCDRV_PATH_INFO path;
+	MCDRV_VOL_INFO vol;
 	int control_data = ucontrol->value.integer.value[0];
+	int err;
 
-
-	CODECDBG("(%d)",control_data);
+	CODECDBG("mc1n2_RECOGNITION_Set= %d ",control_data);
 	memset(&path, 0, sizeof(path));
 
-	if (control_data == CMD_RECOGNITION_DEACTIVE) {
+	switch(control_data) {
+	case CMD_RECOGNITION_DEACTIVE:
 		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF; 
 		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
 		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
 		path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC3_OFF;
-                
+		break;
+	case CMD_RECOGNITION_ACTIVE:
+		break;
+	}
+
+	if( control_data == CMD_RECOGNITION_DEACTIVE){
 		mc1n2_set_path(codec, &path);
 	}
-        
+	CODECDBG( "mc1n2_RECOGNITION_Set End= %d ",control_data);
 	return 0;
 }
-
-#ifdef CONFIG_VOIP
-void mc1n2_start_voip(void)
-{
-        CODECDBG("");
-        
-        voip_status = 1;
-
-#ifdef LOAD_VOIP_CONFIG
-        if (isLoadVoipConfig) {
-                if (!ReadVoipConfigFile("/sdcard/soundcfg/voip.txt", 0))
-                        isLoadVoipConfig = 0;
-        }
-#endif
-}
-
-void mc1n2_end_voip(void)
-{
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        MCDRV_PATH_INFO path;
-
-
-        CODECDBG("");
-        
-        memset(&path, 0, sizeof(path));
-
-        mc1n2_write_reg(codec, MC1N2_DAC_VOL_L, MC1N2_VOIP_SPEAKER_DAC);
-        mc1n2_write_reg(codec, MC1N2_DAC_MASTER, MC1N2_VOIP_SPEAKER_DAC_MASTER);
-        mc1n2_write_reg(codec, MC1N2_DAC_DAT_VAL, MC1N2_VOIP_HEADSET_DIT);
-
-        /* voip volup recovery */
-        _McDrv_Ctrl(MCDRV_SET_AUDIOENGINE, (void *)&stAeInfo_Rcv, 0x1FF);
-
-        /* turn off mic path */
-        path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
-        path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
-        path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC3_OFF;
-        mc1n2_set_path(codec, &path);
-
-        voip_status = 0;
-
-        return;       
-}
-
-int mc1n2_get_voip_status(void)
-{
-        return voip_status;
-}
-
-void mc1n2_set_voip_playback_parameters(int path)
-{
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-
-
-        if (SPK == path) {
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_R, 0);        
-                CODECDBG("VOIP_SPK : SPK_R mute");
-                
-#ifdef LOAD_VOIP_CONFIG
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, gSpeakerGain);
-                mc1n2_write_reg(codec, MC1N2_DAC_VOL_L, gSpeakerGainDac);
-                mc1n2_write_reg(codec, MC1N2_DAC_MASTER, gSpeakerDacMaster);
-                CODECDBG("VOIP_SPK TEST : SPK_L gain(%d)", gSpeakerGain);
-#else
-                mc1n2_write_reg(codec, MC1N2_SPEAKER_VOL_L, MC1N2_VOIP_SPEAKER_GAIN);
-                mc1n2_write_reg(codec, MC1N2_DAC_VOL_L, MC1N2_VOIP_SPEAKER_DAC);
-                mc1n2_write_reg(codec, MC1N2_DAC_MASTER, MC1N2_VOIP_SPEAKER_DAC_MASTER);
-                CODECDBG("VOIP_SPK : SPK_L gain(%d)", MC1N2_VOIP_SPEAKER_GAIN);
-#endif 
-        } else if (RCV == path) {
-#ifdef LOAD_VOIP_CONFIG
-                mc1n2_write_reg(codec, MC1N2_RCV_VOL_L, gReceiverGain);
-                mc1n2_write_reg(codec, MC1N2_RCV_VOL_R, gReceiverGain);
-                CODECDBG("VOIP_RCV TEST : RCV gain(%d)", gReceiverGain);
-#else 
-                mc1n2_write_reg(codec, MC1N2_RCV_VOL_L, MC1N2_VOIP_RECEIVER_GAIN);
-                mc1n2_write_reg(codec, MC1N2_RCV_VOL_R, MC1N2_VOIP_RECEIVER_GAIN);
-                CODECDBG("VOIP_RCV : RCV gain(%d)", MC1N2_VOIP_RECEIVER_GAIN);
-#endif         
-        } else if (HP == path) {
-#ifdef LOAD_VOIP_CONFIG
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, gHeadPhoneGain);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, gHeadPhoneGain);
-                CODECDBG("VOIP_HP TEST : HP gain(%d)", gHeadPhoneGain);
-#else 
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, MC1N2_VOIP_HEADPHONE_GAIN);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, MC1N2_VOIP_HEADPHONE_GAIN);
-                CODECDBG("VOIP_HP : HP gain(%d)", MC1N2_VOIP_HEADPHONE_GAIN);
-#endif         
-        }        
-}
-
-void mc1n2_set_voip_mic_parameters(int micpath)
-{
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        MCDRV_PATH_INFO path;
-
-       
-        memset(&path, 0, sizeof(path));
-
-        if (MIC_MAIN == micpath) {
-#ifdef LOAD_VOIP_CONFIG
-                mc1n2_write_reg(codec, MC1N2_MIC1_GAIN, gSpeaker_mic_gain);
-                mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, gSpeaker_mic_adc);
-                mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, gSpeaker_mic_adc);
-
-                CODECDBG("VoIP MIC_MAIN TEST : Mic1Gain=%d, MicADC=%d", 
-                        gSpeaker_mic_gain, gSpeaker_mic_adc);
-#else
-                mc1n2_write_reg(codec, MC1N2_MIC1_GAIN, MC1N2_VOIP_SPEAKER_MIC_GAIN);
-                mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, MC1N2_VOIP_SPEAKER_MIC_ADC);
-                mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, MC1N2_VOIP_SPEAKER_MIC_ADC);
-
-                CODECDBG("VoIP MIC_MAIN : Mic1Gain=%d, MicADC=%d", 
-                        MC1N2_VOIP_SPEAKER_MIC_GAIN, MC1N2_VOIP_SPEAKER_MIC_ADC);
-#endif
-
-
-                msleep (50);
-
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON; 
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF; 
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
-                path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_ON | MCDRV_SRC0_MIC3_OFF;
-
-                mc1n2_set_path(codec, &path);
-        }else if (MIC_SUB == micpath) {   
-#ifdef LOAD_VOIP_CONFIG
-                mc1n2_write_reg(codec, MC1N2_MIC2_GAIN, gHeadPhone_mic_gain);
-                mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, gHeadPhone_mic_adc);
-                mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, gHeadPhone_mic_adc);
-                mc1n2_write_reg(codec, MC1N2_DAC_DAT_VAL, gHeadPhone_mic_dit);
-                
-                CODECDBG("VoIP MIC_SUB TEST : Mic2Gain=%d, MicADC=%d", gHeadPhone_mic_gain, gHeadPhone_mic_adc);
-#else
-                mc1n2_write_reg(codec, MC1N2_MIC2_GAIN, MC1N2_VOIP_HEADSET_MIC_GAIN);
-                mc1n2_write_reg(codec, MC1N2_ADC_VOL_L, MC1N2_VOIP_HEADSET_ADC_GAIN);
-                mc1n2_write_reg(codec, MC1N2_ADC_VOL_R, MC1N2_VOIP_HEADSET_ADC_GAIN);
-                mc1n2_write_reg(codec, MC1N2_DAC_DAT_VAL, MC1N2_VOIP_HEADSET_DIT);
-
-                CODECDBG("VoIP MIC_SUB : Mic2Gain=%d, MicADC=%d", MC1N2_VOIP_HEADSET_MIC_GAIN, MC1N2_VOIP_HEADSET_ADC_GAIN);
-#endif
-
-                msleep(50);
-
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_ON;
-                path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-                path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
-                path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON | MCDRV_SRC0_MIC3_OFF;
-                path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_ON;
-
-                mc1n2_set_path(codec, &path);
-        }        
-}
-#endif
+// End
 
 static int mc1n2_get_codec_tuning(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
@@ -3120,88 +3051,38 @@ static int mc1n2_set_codec_tuning(struct snd_kcontrol *kcontrol, struct snd_ctl_
 	return 0;
 }
 
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-static int mc1n2_get_music_volume(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+static int mc1n2_get_analog_volume(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
+#ifndef DISABLE_ANALOG_VOLUME
+	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
 
-
-        CODECDBG("Get music volume = [%d]", mc1n2->music_vol);
-
-        ucontrol->value.integer.value[0] = mc1n2->music_vol;
-
-        return 0;
-}
-
-void mc1n2_set_music_codec_gain(int volume)
-{
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
-
-
-        if (music_start_flag
-                && (mc1n2->playback_path == HP)
-                && (mc1n2->fmr_path == FMR_OFF)
-#ifdef CONFIG_VOIP
-                && !mc1n2_get_voip_status()
+	ucontrol->value.integer.value[0] = mc1n2->analog_vol;
 #endif
-                && (volume != mc1n2->analog_vol)
-        ) {
-
-                mc1n2->analog_vol = volume;
-                
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, gAnalVolHpIndex[mc1n2->analog_vol]);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, gAnalVolHpIndex[mc1n2->analog_vol]);
-
-                CODECDBG (" : HP gain(%d)", gAnalVolHpIndex[mc1n2->analog_vol]);
-        }
+      return 0;
 }
-
-static int mc1n2_set_music_volume(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+static int mc1n2_set_analog_volume(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-        int vol = ucontrol->value.integer.value[0];
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
+#ifndef DISABLE_ANALOG_VOLUME
+	int control_data = ucontrol->value.integer.value[0];
+	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
 
+      CODECDBG("analog volume=%d current path =%d ", control_data, mc1n2->playback_path );
 
-        if (vol >= MUSIC_VOL_LEVEL)
-                mc1n2->music_vol = MUSIC_VOL_LEVEL-1;
-        else if (vol < 0)
-                mc1n2->music_vol = 0;
-        else
-                mc1n2->music_vol = vol;
+      if( MC1N2_VOIP_STATUS_CONNECT== mc1n2_voip_get_status()) return 0;
 
-
-        CODECDBG("Set music volume = [%d]", mc1n2->music_vol);
-
-        mc1n2_set_music_codec_gain(mc1n2->music_vol);
-
-        return 0;
-}
-
-void mc1n2_set_default_codec_gain(void)
-{
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
-
-
-        mc1n2->analog_vol = MUSIC_DEFAUTL_VOL_LEVEL;
-
-        if ((mc1n2->playback_path == HP)
-                && (mc1n2->fmr_path == FMR_OFF)
-#ifdef CONFIG_VOIP
-                && !mc1n2_get_voip_status()
+      if(mc1n2->fmr_path==FMR_OFF)
+      {
+          if(mc1n2->playback_path==HP)        
+                mc1n2_set_analog_volume_hp(control_data);
+         else if (mc1n2->playback_path==SPK)
+             mc1n2_set_analog_volume_spk(control_data);
+      }
+      mc1n2->analog_vol=control_data;
 #endif
-        ) {
-
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, gAnalVolHpIndex[mc1n2->analog_vol]);
-                mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, gAnalVolHpIndex[mc1n2->analog_vol]);
-
-                CODECDBG (" : HP gain(%d)", gAnalVolHpIndex[mc1n2->analog_vol]);
-        }
+	return 0;
 }
-#endif
 
 static int mc1n2_get_output_source(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
@@ -3215,98 +3096,96 @@ static int mc1n2_set_output_source(struct snd_kcontrol *kcontrol, struct snd_ctl
 
 static int mc1n2_get_codec_status(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
+	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
 
-        ucontrol->value.integer.value[0] = mc1n2->codec_status;
+	ucontrol->value.integer.value[0] = mc1n2->codec_status;
 
-        return 0;
+      return 0;
 }
-
 static int mc1n2_set_codec_status(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-        int control_data = ucontrol->value.integer.value[0];
-        struct snd_soc_codec *codec = mc1n2_get_codec_data();
-        struct mc1n2_data *mc1n2 = codec->drvdata;
+	int control_data = ucontrol->value.integer.value[0];
+      gPathNum = control_data;
+      
+	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
 
-
-        CODECDBG(" (%d)", control_data);
-        
-        switch(control_data) {
-        case CMD_FMR_INPUT_DEACTIVE:
-        case CMD_FMR_INPUT_ACTIVE:
-        case CMD_FMR_FLAG_CLEAR:
-        case CMD_FMR_END:
-                mc1n2_fmradio_path_parameters(kcontrol, ucontrol);
-                break;
-        
-        case CMD_RECOGNITION_DEACTIVE:
-                CODECDBG("CMD_RECOGNITION_DEACTIVE");
-                voice_recognition_state = 0;
-                
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_RecognitionOff, 0);
-                mc1n2_set_recognition_path(kcontrol, ucontrol);
-                break;
-        
-        case CMD_RECOGNITION_ACTIVE:
-                CODECDBG("CMD_RECOGNITION_ACTIVE");
-                voice_recognition_state = 1;
-                
-                stVolInfo_RecognitionOn.aswA_Sp[0] = pvol[SPEAKER_VOL];
-                stVolInfo_RecognitionOn.aswA_Sp[1] = pvol[SPEAKER_VOL];
-
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-                stVolInfo_RecognitionOn.aswA_Hp[0] = pvol[gAnalVolHpIndex[mc1n2->analog_vol]];
-                stVolInfo_RecognitionOn.aswA_Hp[1] = pvol[gAnalVolHpIndex[mc1n2->analog_vol]];
-#else
-                stVolInfo_RecognitionOn.aswA_Hp[0] = pvol[g_HEADPHONE_VOL];
-                stVolInfo_RecognitionOn.aswA_Hp[1] = pvol[g_HEADPHONE_VOL];
-#endif
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_RecognitionOn, 0);
-                break;
-        
-        case CMD_CALL_FLAG_CLEAR:
-                CODECDBG("CMD_CALL_FLAG_CLEAR ");
-                break;
-        
-        case CMD_CALL_END:
-                CODECDBG("CMD_CALL_END");
-                break;
-
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-	case CMD_MUSIC_START:
-		CODECDBG("CMD_MUSIC_START (Volume=%d)", mc1n2->music_vol);
-		music_start_flag = 1;
-                mc1n2_set_music_codec_gain(mc1n2->music_vol);
+	
+	CODECDBG("mc1n2_set_codec_status_entered %d ", control_data );   //yosef add
+	switch(control_data) {
+	case CMD_FMR_INPUT_DEACTIVE:
+		mc1n2_fmradio_path_close(kcontrol, ucontrol);
 		break;
-
-	case CMD_MUSIC_STOP:
-		CODECDBG("CMD_MUSIC_STOP");
-		music_start_flag = 0;
-                mc1n2_set_default_codec_gain();
+	case CMD_FMR_INPUT_ACTIVE:
+		mc1n2_fmradio_path_close(kcontrol, ucontrol);
 		break;
-#endif
-
-#ifdef CONFIG_VOIP
-        case CMD_VOIP_START:
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_VoipOn, 0);	
-                CODECDBG("CMD_VOIP_START");
-                mc1n2_start_voip();
-                break;
+	case CMD_FMR_FLAG_CLEAR:
+	mc1n2_fmradio_path_close(kcontrol, ucontrol);
+		break;
+	case CMD_FMR_END:
+	mc1n2_fmradio_path_close(kcontrol, ucontrol);
+		break;
+	case CMD_RECOGNITION_DEACTIVE:
+		CODECDBG ("CMD_RECOGNITION_DEACTIVE");
+ 		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_RecognitionOff, 0);
+		mc1n2_RECOGNITION_Set(kcontrol, ucontrol);// 11.02.19 JinoKang for Voice Search
+		break;
+	case CMD_RECOGNITION_ACTIVE:
+		CODECDBG ("CMD_RECOGNITION_ACTIVE");
+ 		stVolInfo_RecognitionOn.aswA_Sp[0] = pvol[gAnalVolSpeakerIndex[mc1n2->analog_vol]];
+		stVolInfo_RecognitionOn.aswA_Sp[1] = pvol[gAnalVolSpeakerIndex[mc1n2->analog_vol]];
+		stVolInfo_RecognitionOn.aswA_Hp[0] = pvol[gAnalVolHpIndex[mc1n2->analog_vol]];
+		stVolInfo_RecognitionOn.aswA_Hp[1] = pvol[gAnalVolHpIndex[mc1n2->analog_vol]];
+		_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_RecognitionOn, 0);
+		break;
+	case CMD_CALL_FLAG_CLEAR:
+		CODECDBG ("CMD_CALL_FLAG_CLEAR ");
+ 		break;
+	case CMD_CALL_END:
+		CODECDBG ("CMD_CALL_END");
+ 		break;
+	case CMD_VOIP_ON:
+	
+        	_McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_VoipOn, 0);	
+	       CODECDBG("CMD_VOIP_ON ");   //yosef add
+            mc1n2_start_voip();
+            break;
+      case CMD_VOIP_OFF:
+     
+             CODECDBG("CMD_VOIP_OFF ");   //yosef add
+            _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_VoipOff, 0);
+             mc1n2_end_voip();             
+             break;
         
-        case CMD_VOIP_STOP:
-                CODECDBG("CMD_VOIP_STOP");
-                _McDrv_Ctrl(MCDRV_SET_VOLUME, (void *)&stVolInfo_VoipOff, 0);
-                mc1n2_end_voip();             
-                break;
-#endif
+      case CMD_FAKE_PROXIMITY_SENSOR_ON:
+            CODECDBG("CMD_FAKE_PROXIMITY_SENSOR_ON ");   
+            mc1n2_set_voip_fake_proximity_sensor(true);
+            break;
+    
+    case CMD_FAKE_PROXIMITY_SENSOR_OFF:
+        CODECDBG("CMD_FAKE_PROXIMITY_SENSOR_OFF " );   
+        mc1n2_set_voip_fake_proximity_sensor(false);
+        break;
+        
+	#ifdef CONFIG_TDMB	// VenturiGB_Usys_jypark 2011.08.08 - DMB [[
+    case CMD_DMB_ON:
+        isDMBActivate=1;
+        mc1n2_set_analog_volume_spk(30);
+        mc1n2_set_analog_volume_hp(30);
+        CODECDBG("CMD_DMB_ON");   
+        break;
+        
+    case CMD_DMB_OFF:
+        isDMBActivate=0;
+        CODECDBG("CMD_DMB_OFF");   
+       break;
+	#endif				// VenturiGB_Usys_jypark 2011.08.08 - DMB ]]	   
+	}
 
-        default:
-                break;
-        }
 
-        mc1n2->codec_status = control_data;
-        return 0;
+	mc1n2->codec_status = control_data;
+	return 0;
 }
 
 static const unsigned int mc1n2_tlv_digital_rcv[] = {TLV_DB_LINEAR_ITEM(-5700, 600)};
@@ -3314,34 +3193,14 @@ static const unsigned int mc1n2_tlv_digital_spkr[] = {TLV_DB_LINEAR_ITEM(-5700, 
 static const unsigned int mc1n2_tlv_digital_headphone[] = {TLV_DB_LINEAR_ITEM(-5700, 600)};
 static const unsigned int mc1n2_tlv_digital_mic[] = {TLV_DB_LINEAR_ITEM(-7162, 1762)};
 
-static const char *playback_path[] = {
-        "OFF", "RCV", "SPK", "HP", "BT", "DUAL", "RING_SPK", "RING_HP", 
-        "RING_DUAL", "EXTRA_DOCK_SPEAKER", "TV_OUT"
-};
-static const char *voicecall_path[] = {
-        "OFF", "RCV", "SPK", "HP", "BT"
-};
-static const char *mic_path[] = {
-        "Main Mic", "Hands Free Mic"
-};
-static const char *fmradio_path[] = {
-        "FMR_OFF", "FMR_SPK", "FMR_HP", "FMR_SPK_MIX", "FMR_HP_MIX", "FMR_DUAL_MIX"
-};
-static const char *codec_tuning_control[] = {
-        "OFF", "ON"
-};
-static const char *codec_status_control[] = {
-        "FMR_VOL_0", "FMR_VOL_1", "FMR_OFF", "REC_OFF", "REC_ON"
-};
-static const char *output_source_state[] = {
-        "Default Output", "Ring Tone", "VoIP Output"
-};
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-static const char *music_volume[] = {
-        "MUSIC_VOL_0", "MUSIC_VOL_MAX"
-};
-#endif
-
+static const char *playback_path[] = {"OFF", "RCV", "SPK", "HP", "BT", "DUAL", "RING_SPK", "RING_HP", "RING_DUAL", "EXTRA_DOCK_SPEAKER", "TV_OUT"};
+static const char *voicecall_path[] = {"OFF", "RCV", "SPK", "HP", "BT"};
+static const char *mic_path[] = {"Main Mic", "Hands Free Mic"};
+static const char *fmradio_path[] = {"FMR_OFF", "FMR_SPK", "FMR_HP", "FMR_SPK_MIX", "FMR_HP_MIX", "FMR_DUAL_MIX"};
+static const char *codec_tuning_control[] = {"OFF", "ON"};
+static const char *codec_status_control[] = {"FMR_VOL_0", "FMR_VOL_1", "FMR_OFF", "REC_OFF", "REC_ON"};
+static const char *anal_volume_control[] = {"ANALVOL UP","ANALVOL DOWN"};
+static const char *output_source_state[] = {"Default Output", "Ring Tone", "VoIP Output"};
 
 static const struct soc_enum path_control_enum[] = {
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(playback_path), playback_path),
@@ -3350,10 +3209,8 @@ static const struct soc_enum path_control_enum[] = {
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(fmradio_path), fmradio_path),
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(codec_tuning_control), codec_tuning_control),
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(codec_status_control), codec_status_control),
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(anal_volume_control), anal_volume_control),
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(output_source_state), output_source_state),
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(music_volume), music_volume),
-#endif
 };
 
 static const struct snd_kcontrol_new mc1n2_snd_controls[] = {
@@ -3367,10 +3224,8 @@ static const struct snd_kcontrol_new mc1n2_snd_controls[] = {
 	SOC_ENUM_EXT("FM Radio Path", path_control_enum[3], mc1n2_get_fmradio_path, mc1n2_set_fmradio_path),
 	SOC_ENUM_EXT("Codec Tuning", path_control_enum[4], mc1n2_get_codec_tuning, mc1n2_set_codec_tuning),
 	SOC_ENUM_EXT("Codec Status", path_control_enum[5], mc1n2_get_codec_status, mc1n2_set_codec_status),
-	SOC_ENUM_EXT("Output Source", path_control_enum[6], mc1n2_get_output_source, mc1n2_set_output_source),
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-	SOC_ENUM_EXT("Music Volume", path_control_enum[7], mc1n2_get_music_volume, mc1n2_set_music_volume),
-#endif
+	SOC_ENUM_EXT("Music Volume", path_control_enum[6], mc1n2_get_analog_volume, mc1n2_set_analog_volume),
+	SOC_ENUM_EXT("Output Source", path_control_enum[7], mc1n2_get_output_source, mc1n2_set_output_source),	
 };
 
 /*
@@ -3396,49 +3251,47 @@ int audio_power(int en)
 {
 	u32 val;
 
+	struct snd_soc_codec *codec = mc1n2_get_codec_data();
+	struct mc1n2_data *mc1n2 = codec->drvdata;
 
-	CODECDBG("(%d)", en);
-        
-	if (en) {
-		/* Forbid to turn off MCLK in sleep mode */
+	CODECDBG("en= %d",en);
+	if(en)
+	{
+		// Forbid to turn off MCLK in sleep mode.
 		val = __raw_readl(S5P_SLEEP_CFG);
 		val |= (S5P_SLEEP_CFG_USBOSC_EN);
 		__raw_writel(val , S5P_SLEEP_CFG);
 
-                /* Wait for warming up */
-		msleep(10);
+		msleep(10);	// Wait for warming up.
 
-		/* Turn on master clock */
-                __raw_writel(__raw_readl(S5P_OTHERS) | (3<<8) , S5P_OTHERS);
-                __raw_writel(__raw_readl(S5P_CLK_OUT) | (0x1) , S5P_CLK_OUT);
+		// Turn on master clock.
 
-                /* Enable ear-path switch */
-                gpio_set_value(GPIO_MUTE_ON, 1);
-	} else {
+			__raw_writel(__raw_readl(S5P_OTHERS) | (3<<8) , S5P_OTHERS); 
+			__raw_writel(__raw_readl(S5P_CLK_OUT) | (0x1) , S5P_CLK_OUT);	
+	}
+	else
+	{
 		MCDRV_PATH_INFO path;
 		memset(&path, 0, sizeof(path));
 
-                /* Disable ear-path switch */
-                gpio_set_value(GPIO_MUTE_ON, 0);
+		// MIC off
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF; 
+		path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF; 
+		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
+		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF; 
+                if(get_headset_status() == 1) { // 4pole type.
+        		path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF;  // yosef added test for mic 
+                } else {
+        		path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF;  // yosef added test for mic 
+                }
 
-		/* MIC off */
-		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
-		path.asDit0[0].abSrcOnOff[MCDRV_SRC_DIR2_BLOCK] = MCDRV_SRC3_DIR2_OFF;
-		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF | MCDRV_SRC0_MIC3_OFF;
-                
-                if (get_headset_status() == 1) // 4pole type.
-        		path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF;
-                else
-        		path.asBias[0].abSrcOnOff[MCDRV_SRC_MIC1_BLOCK] = MCDRV_SRC0_MIC1_OFF | MCDRV_SRC0_MIC2_OFF;
-
-		/* Lineout off */
+		// Lineout off
 		path.asDit0[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
 		path.asAdc0[0].abSrcOnOff[MCDRV_SRC_LINE1_L_BLOCK] = MCDRV_SRC1_LINE1_L_OFF;
 		path.asAdc0[1].abSrcOnOff[MCDRV_SRC_LINE1_R_BLOCK] = MCDRV_SRC1_LINE1_R_OFF;
 		path.asMix[0].abSrcOnOff[MCDRV_SRC_ADC0_BLOCK] = MCDRV_SRC4_ADC0_OFF;
 
-		/* Playback off */
+		// Playback off
 		path.asMix[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
 		path.asSpOut[0].abSrcOnOff[MCDRV_SRC_DAC_L_BLOCK] = MCDRV_SRC5_DAC_L_OFF;
 		path.asSpOut[1].abSrcOnOff[MCDRV_SRC_DAC_R_BLOCK] = MCDRV_SRC5_DAC_R_OFF;
@@ -3454,11 +3307,11 @@ int audio_power(int en)
 		path.asAe[0].abSrcOnOff[MCDRV_SRC_DIR0_BLOCK] = MCDRV_SRC3_DIR0_OFF;
 		_McDrv_Ctrl(MCDRV_SET_PATH, &path, 0);
 		
-		/* Turn off master clock */
+		// Turn off master clock.
 		__raw_writel(__raw_readl(S5P_OTHERS) & (~(0x3<<8)) , S5P_OTHERS);
 		__raw_writel(__raw_readl(S5P_CLK_OUT) & (0xFFFFFFFE) , S5P_CLK_OUT);
 
-		/* Allow to turn off MCLK in sleep mode */
+		// Allow to turn off MCLK in sleep mode.
 		val = __raw_readl(S5P_SLEEP_CFG);
 		val &= ~(S5P_SLEEP_CFG_USBOSC_EN);
 		__raw_writel(val , S5P_SLEEP_CFG);
@@ -3477,6 +3330,8 @@ static int mc1n2_probe(struct platform_device *pdev)
 	struct snd_soc_codec *codec = mc1n2_get_codec_data();
 	struct mc1n2_data *mc1n2 = codec->drvdata;
 	struct mc1n2_setup *setup = socdev->codec_data;
+//	MCDRV_REG_INFO info ;  // yosef added for HP amp test
+//	int reg_val; //yosef added for HP amp test
 	int err;
 	UINT32 update = 0;
 
@@ -3484,13 +3339,14 @@ static int mc1n2_probe(struct platform_device *pdev)
 	CODECDBG("");
 
 	audio_power(1);
-
+#if 0	// no need to include
+	gpio_set_value(GPIO_MICBIAS_EN, 1);
+#endif
 	if (!codec) {
 		dev_err(socdev->dev, "I2C bus is not probed successfully\n");
 		err = -ENODEV;
 		goto error_codec_data;
 	}
-        
 #ifdef ALSA_VER_1_0_19
 	socdev->codec = codec;
 #else
@@ -3555,6 +3411,8 @@ static int mc1n2_probe(struct platform_device *pdev)
 	update |= (MCDRV_DIO2_COM_UPDATE_FLAG | MCDRV_DIO2_DIR_UPDATE_FLAG | MCDRV_DIO2_DIT_UPDATE_FLAG);
 #endif
 
+        CODECDBG("update=  %d",update);   //yosef add
+
 	err = _McDrv_Ctrl(MCDRV_SET_DIGITALIO, (void *)&stDioInfo_Default, update);
 	if (err < 0) {
 		dev_err(socdev->dev, "%d: Error in MCDRV_SET_DIGITALIO\n", err);
@@ -3600,20 +3458,65 @@ static int mc1n2_probe(struct platform_device *pdev)
 		goto error_set_mode;
 	}
 
-        /* analog volume init*/
-#ifdef CONFIG_MUSIC_CODEC_GAIN
-        mc1n2->analog_vol = MUSIC_DEFAUTL_VOL_LEVEL; 
-#endif
-#ifdef CONFIG_FMRADIO_CODEC_GAIN
-        mc1n2->fm_volume = 0;
-#endif
+#if 0
+	s3c_gpio_setpull(GPIO_MUTE_ON, S3C_GPIO_PULL_NONE);
+	s3c_gpio_cfgpin(GPIO_MUTE_ON, S3C_GPIO_OUTPUT);
+	gpio_set_value(GPIO_MUTE_ON, 0);
+#endif        
+	//msleep(30);
+	//gpio_set_value(GPIO_MUTE_ON, 1);
 
+
+/*   yosef test code
+	reg_val=mc1n2_read_reg(codec, MC1N2_HEADPHONE_VOL_L);
+CODECDBG(KERN_DEBUG "\n *******Yosef:mc1n2_read_reg:MCI_HPVOL_L=  %d \n",reg_val);   //yosef add
+	
+	reg_val=mc1n2_read_reg(codec, MC1N2_HEADPHONE_VOL_R);
+CODECDBG(KERN_DEBUG "\n *******Yosef:mc1n2_read_reg:MCI_HPVOL_R=  %d \n",reg_val);   //yosef add
+
+	mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, 13);
+	info.bRegType = MCDRV_REGTYPE_B_ANALOG;
+	info.bAddress  = 35;  //MCI_HPVOL_L
+	reg_val=_McDrv_Ctrl(MCDRV_READ_REG,&info,0);
+	reg_val=mc1n2_read_reg(codec, MC1N2_HEADPHONE_VOL_L);
+
+	mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, 22);
+	info.bRegType = MCDRV_REGTYPE_B_ANALOG;
+	info.bAddress  = 37;  //MCI_HPVOL_L
+	reg_val=_McDrv_Ctrl(MCDRV_READ_REG,&info,0);
+	reg_val=mc1n2_read_reg(codec, MC1N2_HEADPHONE_VOL_L);
+
+
+	mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_L, 18);
+	info.bRegType = MCDRV_REGTYPE_B_ANALOG;
+	info.bAddress  = 35;  //MCI_HPVOL_L
+	reg_val=_McDrv_Ctrl(MCDRV_READ_REG,&info,0);
+	reg_val=mc1n2_read_reg(codec, MC1N2_HEADPHONE_VOL_L);
+
+	mc1n2_write_reg(codec, MC1N2_HEADPHONE_VOL_R, 18);
+	info.bRegType = MCDRV_REGTYPE_B_ANALOG;
+	info.bAddress  = 37;  //MCI_HPVOL_L
+	reg_val=_McDrv_Ctrl(MCDRV_READ_REG,&info,0);
+	reg_val=mc1n2_read_reg(codec, MC1N2_HEADPHONE_VOL_L);
+
+*/
+    /* venturi project update by park dong yun for voip */
+    mc1n2_voip_init();
+
+    /* analog volume init*/
+#ifdef DISABLE_ANALOG_VOLUME
+    mc1n2->analog_vol=30; //MAX level
+#else
+    mc1n2->analog_vol=15;
+#endif
+    
 	return 0;
 	
 error_set_mode:
 #if (defined ALSA_VER_1_0_19) || (defined ALSA_VER_1_0_21)
 error_init_card:
 #endif
+error_add_hwdep:
 error_add_ctl:
 	snd_soc_free_pcms(socdev);
 error_new_pcm:
@@ -3696,9 +3599,13 @@ static int mc1n2_suspend(struct platform_device *pdev, pm_message_t state)
 
 	TRACE_FUNC();
 
-	if (fmradio_state) /* Do not enter suspend mode during FM radio */
+	if(codec_using) // do not enter suspend mode during call
 		return 0;
 	
+#if 0	// no need to include
+	if(get_headset_status() == SEC_JACK_NO_DEVICE)
+		gpio_set_value(GPIO_MICBIAS_EN, 0);
+#endif
 
 	mutex_lock(&mc1n2->mutex);
 
@@ -3718,15 +3625,13 @@ static int mc1n2_suspend(struct platform_device *pdev, pm_message_t state)
 		}
 	}
 
-#if 0
-	err = _McDrv_Ctrl(MCDRV_TERM, NULL, 0);
+/*	err = _McDrv_Ctrl(MCDRV_TERM, NULL, 0);
 	if (err != MCDRV_SUCCESS) {
 		dev_err(codec->dev, "%d: Error in MCDRV_TERM\n", err);
 		err = -EIO;
 	} else {
 		err = 0;
-	}
-#endif
+	}*/
 
 	audio_power(0);
 
@@ -3749,24 +3654,27 @@ static int mc1n2_resume(struct platform_device *pdev)
 	int err, i;
 
 	TRACE_FUNC();
+//	if(!codec_using)
+//		audio_power(1);
 
-	if (fmradio_state) /* Do not enter resume mode during FM radio */
+	if(codec_using)    // do not enter suspend mode during call or FM radio
 		return 0;
 
 	audio_power(1);
 	
+#if 0	// no need to include
+	gpio_set_value(GPIO_MICBIAS_EN, 1);
+#endif
 	mutex_lock(&mc1n2->mutex);
 
-#if 0
-	err = _McDrv_Ctrl(MCDRV_INIT, &mc1n2->setup.init, 0);
+/*	err = _McDrv_Ctrl(MCDRV_INIT, &mc1n2->setup.init, 0);
 	if (err != MCDRV_SUCCESS) {
 		dev_err(codec->dev, "%d: Error in MCDRV_INIT\n", err);
 		err = -EIO;
 		goto error;
 	} else {
 		err = 0;
-	}
-#endif
+	}*/
 
 	/* restore parameters */
 	for (i = 0; i < sizeof(MCDRV_VOL_INFO)/sizeof(SINT16); i++, vol++) {
@@ -3815,7 +3723,6 @@ static int mc1n2_i2c_detect(struct i2c_client *client, struct i2c_board_info *in
 	if (bHwid != MC1N2_HW_ID_AB && bHwid != MC1N2_HW_ID_AA) {
 		return -ENODEV;
 	}
-        
 	mc1n2_hwid = bHwid;
 
 	return 0;

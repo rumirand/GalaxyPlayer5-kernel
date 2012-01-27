@@ -1594,6 +1594,8 @@ int cytouch_probe(struct i2c_client *client,
 		goto err_input_register_device_failed;
 	}
 
+	cytouch_register_irq();
+
 	if (cytouch_print_ver() == FALSE) {
 		printk(KERN_DEBUG "\n[TSP][ERROR] Touch device NOT found ...1\n");
 		cytouch_upgrade_fw_force();
@@ -1605,8 +1607,6 @@ int cytouch_probe(struct i2c_client *client,
 	} else {
 		cytouch_upgrade_fw();
 	}
-
-	cytouch_register_irq();
 
 #ifdef CYTSP_TIMER_ENABLE
 	cytouch_init_rel_timer();
@@ -1823,6 +1823,12 @@ static int cytouch_upgrade_fw(void)
 		CYPRESS_ROLLBACK_WATCHDOG_TIMER_RESET();
 	}
 
+	/* update version info.. */
+	g_vendor_id = cytma340_new_vendor_id;
+	g_module_id = cytma340_new_module_id;
+	g_fw_ver = cytma340_new_fw_ver;
+	tsp_version = g_fw_ver;
+
 	/* reset */
 	cytouch_hw_set_pwr(CYTOUCH_PWROFF);
 	mdelay(100);
@@ -1836,9 +1842,6 @@ static int cytouch_upgrade_fw(void)
 	cytouch_hw_set_pwr(CYTOUCH_PWRON);
 	msleep(1000); // mdelay(400);
 	msleep(1000);
-
-	/* update version info.. */
-	cytouch_print_ver();
 
 	// minhyodebug
 #if 0
@@ -1872,6 +1875,12 @@ static int cytouch_upgrade_fw_force(void)
 		CYPRESS_ROLLBACK_WATCHDOG_TIMER_RESET();
 	}
 
+	/* update version info.. */
+	g_vendor_id = cytma340_new_vendor_id;
+	g_module_id = cytma340_new_module_id;
+	g_fw_ver = cytma340_new_fw_ver;
+	tsp_version = g_fw_ver;
+
 	/* reset */
 	cytouch_hw_set_pwr(CYTOUCH_PWROFF);
 	mdelay(100);
@@ -1885,9 +1894,6 @@ static int cytouch_upgrade_fw_force(void)
 	cytouch_hw_set_pwr(CYTOUCH_PWRON);
 	msleep(1000); // mdelay(400);
 	msleep(1000);
-
-	/* update version info.. */
-	cytouch_print_ver();
 
 	// minhyodebug
 #if 0
@@ -2734,7 +2740,7 @@ void SCLKHigh(void)
 #endif
 	I2C_CLR_SCL_GPIO();		//gpio output
 	I2C_SET_SCL_GPIO_HIGH();//gpio output high
-//	Delay10us(1);
+	Delay10us(1);
 }
 
 
@@ -2755,7 +2761,7 @@ void SCLKLow(void)
 #endif
 	I2C_CLR_SCL_GPIO(); 	//gpio output
 	I2C_SET_SCL_GPIO_LOW();	//gpio output low
-//	Delay10us(1);
+	Delay10us(1);
 }
 
 #ifndef RESET_MODE  // Only needed for power cycle mode
@@ -3228,11 +3234,9 @@ signed char fDetectHiLoTransition(void)
     while(1)
     {
         SCLKLow();
-        ndelay(200);
         if (fSDATACheck())       // exit once SDATA goes HI
         break;
         SCLKHigh();
-        ndelay(200);
         // If the wait is too long then timeout
         if (iTimer-- == 0) {
             return (ERROR);
@@ -3243,12 +3247,10 @@ signed char fDetectHiLoTransition(void)
     while(1)
     {
         SCLKLow();
-        ndelay(200);
         if (!fSDATACheck()) {   // exit once SDATA returns LOW
             break;
         }
         SCLKHigh();
-        ndelay(200);
         // If the wait is too long then timeout
         if (iTimer-- == 0) {
             return (ERROR);
@@ -3371,8 +3373,7 @@ signed char fPowerCycleInitializeTargetForISSP(void)
     SetTargetVDDStrong();
     ApplyTargetVDD();
     // wait 1msec for the power to stabilize
-#if 0
-//change for update fail
+
 //    for (n=0; n<10; n++) {
 //        Delay(DELAY100us);
 //    }
@@ -3387,19 +3388,7 @@ signed char fPowerCycleInitializeTargetForISSP(void)
     if ( (fIsError = fDetectHiLoTransition()) ) {
         return(INIT_ERROR);
     }
-#else
-	SetSCLKHiZ();
-	SetSDATAHiZ();
 
-	udelay(100);
-
-	if (fSDATACheck()) {
-		if (fIsError = fDetectHiLoTransition())
-			return (INIT_ERROR);
-
-	} else
-		mdelay(15);
-#endif
     // Configure the pins for initialization
     SetSDATAHiZ();
     SetSCLKStrong();

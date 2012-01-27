@@ -118,7 +118,6 @@ typedef const struct si_pub  si_t;
 #define WL_IW_USE_ISCAN  1
 #define ENABLE_ACTIVE_PASSIVE_SCAN_SUPPRESS  1
 
-#define RSSI_OFFSET   8
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
 	struct mutex  g_wl_ss_scan_lock; 
@@ -1659,7 +1658,7 @@ wl_iw_get_rssi(
 
 	if (g_onoff == G_WLAN_SET_ON) {
 		error = dev_wlc_ioctl(dev, WLC_GET_RSSI, &scb_val, sizeof(scb_val_t));
-		rssi = dtoh32(scb_val.val) + RSSI_OFFSET;
+		rssi = dtoh32(scb_val.val);
 
 		error = dev_wlc_ioctl(dev, WLC_GET_SSID, &ssid, sizeof(ssid));
 
@@ -3043,8 +3042,8 @@ wl_iw_get_aplist(
 		
 		memcpy(addr[dwrq->length].sa_data, &bi->BSSID, ETHER_ADDR_LEN);
 		addr[dwrq->length].sa_family = ARPHRD_ETHER;
-		qual[dwrq->length].qual = rssi_to_qual(dtoh16(bi->RSSI)) + RSSI_OFFSET;
-		qual[dwrq->length].level = 0x100 + dtoh16(bi->RSSI) + RSSI_OFFSET;
+		qual[dwrq->length].qual = rssi_to_qual(dtoh16(bi->RSSI));
+		qual[dwrq->length].level = 0x100 + dtoh16(bi->RSSI);
 		qual[dwrq->length].noise = 0x100 + bi->phy_noise;
 
 		
@@ -4154,8 +4153,8 @@ wl_iw_get_scan_prep(
 
 		
 		iwe.cmd = IWEVQUAL;
-		iwe.u.qual.qual = rssi_to_qual(dtoh16(bi->RSSI))+RSSI_OFFSET;
-		iwe.u.qual.level = 0x100 + dtoh16(bi->RSSI)+RSSI_OFFSET;
+		iwe.u.qual.qual = rssi_to_qual(dtoh16(bi->RSSI));
+		iwe.u.qual.level = 0x100 + dtoh16(bi->RSSI);
 		iwe.u.qual.noise = 0x100 + bi->phy_noise;
 		event = IWE_STREAM_ADD_EVENT(info, event, end, &iwe, IW_EV_QUAL_LEN);
 
@@ -4527,8 +4526,8 @@ wl_iw_iscan_get_scan(
 
 		
 		iwe.cmd = IWEVQUAL;
-		iwe.u.qual.qual = rssi_to_qual(dtoh16(bi->RSSI))+RSSI_OFFSET;
-		iwe.u.qual.level = 0x100 + dtoh16(bi->RSSI)+RSSI_OFFSET;
+		iwe.u.qual.qual = rssi_to_qual(dtoh16(bi->RSSI));
+		iwe.u.qual.level = 0x100 + dtoh16(bi->RSSI);
 		iwe.u.qual.noise = 0x100 + bi->phy_noise;
 		event = IWE_STREAM_ADD_EVENT(info, event, end, &iwe, IW_EV_QUAL_LEN);
 

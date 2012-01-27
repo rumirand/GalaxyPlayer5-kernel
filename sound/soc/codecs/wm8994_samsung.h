@@ -1,4 +1,4 @@
-/*
+﻿/*
  * wm8994_samsung.h  --  WM8994 Soc Audio driver
  *
  * This program is free software; you can redistribute it and/or modify
@@ -34,11 +34,9 @@ extern struct snd_soc_dai wm8994_dai;
 
 #define AUDIO_COMMON_DEBUG	1
 
-#if 1 // Add for Palladio
-#ifdef CONFIG_ARIES_KOR // Only KOR, Enable analog volume feature.
-#define CONFIG_MUSIC_CODEC_GAIN
-#endif
+#if 1 //Add for palladio
 #define CONFIG_VOICE_RECOGNITION
+//#define CONFIG_MUSIC_CODEC_GAIN
 #define CONFIG_FMRADIO_CODEC_GAIN
 #define CONFIG_VOIP
 #define CONFIG_EUR_BUILD

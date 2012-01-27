@@ -621,11 +621,12 @@ static int wm8994_set_codec_status(struct snd_kcontrol *kcontrol,
 
 	int control_data = ucontrol->value.integer.value[0];
 
+	DEBUG_LOG("Received control_data = [0x%X]", control_data);
+
 	switch (control_data) {
 	/* FM Radio Volume zero control */
 	case CMD_FMR_INPUT_DEACTIVE:
 	case CMD_FMR_INPUT_ACTIVE:
-                DEBUG_LOG("FM Radio Input active(%d)", control_data);
 		if (wm8994->codec_state & FMRADIO_ACTIVE)
 			wm8994_set_fmradio_input_active(codec, control_data);
 		break;
@@ -3789,10 +3790,13 @@ void wm8994_set_music_codec_gain(struct snd_soc_codec *codec, int vol)
 {
 	struct wm8994_priv *wm8994 = codec->drvdata;
         u16 val;
-        int codec_gain;
+        
 
+        wm8994->music_volume = vol;
+        wm8994->music_codec_gain = music_gain_table[wm8994->music_volume];
 
-        codec_gain = music_gain_table[vol];
+        DEBUG_LOG("Volume(%d) => gain(0x%x)",
+                wm8994->music_volume, wm8994->music_codec_gain);
 
         if (wm8994->music_start_flag &&
                 (wm8994->cur_path == HP || wm8994->cur_path == HP_NO_MIC) &&
@@ -3800,12 +3804,9 @@ void wm8994_set_music_codec_gain(struct snd_soc_codec *codec, int vol)
                 !(wm8994->codec_state & CALL_ACTIVE) &&
                 (wm8994->output_source != VOIP_OUTPUT) &&
 #ifdef CONFIG_VOIP
-                !wm8994->voip_start_flag &&
+                !wm8994->voip_start_flag
 #endif
-                (codec_gain != wm8994->music_codec_gain)
         ) {
-                wm8994->music_codec_gain = codec_gain;
-                
                 DEBUG_LOG("Set HP codec gain(0x%x)", wm8994->music_codec_gain);
                 
                 val = wm8994_read(codec,WM8994_LEFT_OUTPUT_VOLUME);

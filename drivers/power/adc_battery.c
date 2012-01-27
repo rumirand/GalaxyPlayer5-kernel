@@ -193,7 +193,6 @@ struct s3c_battery_info {
 #endif /* __BATTERY_COMPENSATION__ */
 
 	struct battery_info bat_info;
-	battery_type batt_type;
 #ifdef LPM_MODE
 	unsigned int charging_mode_booting;
 #endif
@@ -318,7 +317,6 @@ static struct device_attribute s3c_battery_attrs[] = {
 	SEC_BATTERY_ATTR(charging_ta_mode),
 	SEC_BATTERY_ATTR(batt_vol_adc_for_cal),
 	SEC_BATTERY_ATTR(batt_vol_for_cal),
-	SEC_BATTERY_ATTR(batt_type_check),
 };
 
 enum {
@@ -390,7 +388,6 @@ enum {
 	CHARGING_TA_MODE,
 	BATT_VOL_ADC_FOR_CAL,
 	BATT_VOL_FOR_CAL,
-	BATT_TYPE_CHECK,
 };
 
 #ifndef __FUEL_GAUGES_IC__
@@ -920,9 +917,6 @@ static ssize_t s3c_bat_show_property(struct device *dev, struct device_attribute
 		break;
 	case BATT_VOL_FOR_CAL:
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", s3c_read_vol_for_cal());
-		break;
-	case BATT_TYPE_CHECK:
-		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", s3c_bat_info.batt_type);
 		break;
 	default:
 		i = -EINVAL;
@@ -1841,6 +1835,13 @@ static void s3c_cable_check_status(void)
 		}
 
 	} else {
+		if(charging_mode_get())
+		{
+			printk("\nPower off cause charger removed in LPM mode\n");
+			if (pm_power_off)
+				pm_power_off();
+		}	
+
 		cable_status = CHARGER_BATTERY;
 		s3c_bat_info.bat_info.batt_is_recharging = 0;	/* s1-kor feature */
 		if (s3c_get_bat_health() != POWER_SUPPLY_HEALTH_GOOD) {	/* s1-kor feature */
@@ -2033,7 +2034,6 @@ static int s3c_get_bat_temp(void)
 #endif /* __BATTERY_COMPENSATION__ */
 	unsigned int event_case = 0;
 	int temp_high_block, temp_high_recover;
-	int temp_low_block, temp_low_recover;
 	int mvolt, r;
 
 #ifdef __SET_TEST_VALUE__
@@ -2042,6 +2042,98 @@ static int s3c_get_bat_temp(void)
 
 	battery_debug("[BAT]:%s\n", __func__);
 //	temp_adc_aver = calculate_average_adc(S3C_ADC_TEMPERATURE, temp_adc); 
+
+#ifdef __TEST_DEVICE_DRIVER__
+	/* switch (bat_temper_state) {
+	case 0:
+		break;
+	case 1:
+		temp_adc = TEMP_HIGH_BLOCK;
+		break;
+	case 2:
+		temp_adc = TEMP_LOW_BLOCK;
+		break;
+	default:
+		break;
+	}*/
+#endif /* __TEST_DEVICE_DRIVER__ */
+
+	//s3c_bat_info.bat_info.batt_temp_adc_aver=temp_adc_aver; /* eur-feature */
+
+#ifdef __SET_TEST_VALUE__
+	if (ibatt_test_value == 1) {
+		if (test_on_off == 0) {
+			temp_adc = TEMP_HIGH_BLOCK - 20;
+			//temp_adc = TEMP_LOW_BLOCK + 20;
+			test_on_off = 1;
+		} else {
+			temp_adc = TEMP_HIGH_BLOCK - 40;
+			//temp_adc = TEMP_LOW_BLOCK + 40;
+			test_on_off = 0;
+		}
+
+		if (s3c_bat_info.bat_info.charging_source == CHARGER_BATTERY) {
+			temp_adc = TEMP_HIGH_RECOVER - 40;
+		}
+	}
+#endif /* __SET_TEST_VALUE__ */
+
+#ifdef __BATTERY_COMPENSATION__
+	/*ex_case = OFFSET_MP3_PLAY 	| OFFSET_VOICE_CALL_2G 
+		| OFFSET_VOICE_CALL_3G	| OFFSET_DATA_CALL 
+		| OFFSET_VIDEO_PLAY;
+	if (s3c_bat_info.device_state & ex_case) {
+		if (health == POWER_SUPPLY_HEALTH_OVERHEAT
+		    || health == POWER_SUPPLY_HEALTH_COLD) {
+			s3c_temp_control(POWER_SUPPLY_HEALTH_GOOD);
+			//pr_info("[BAT]:%s : temp exception case. : device_state=%d \n", __func__, s3c_bat_info.device_state);
+		}
+		goto __map_temperature__;
+	}*/
+#endif /* __BATTERY_COMPENSATION__ */
+
+#ifdef SUPPORT_EVENT_TEMP_BLOCK
+	// Event CHG Block
+	event_case = OFFSET_MP3_PLAY | OFFSET_VOICE_CALL_2G | OFFSET_VOICE_CALL_3G	| OFFSET_VIDEO_PLAY;
+
+	if (s3c_bat_info.device_state & event_case)
+	{
+		temp_high_block   = TEMP_EVENT_HIGH_BLOCK;
+		temp_high_recover = TEMP_EVENT_HIGH_RECOVER;
+	}
+	else
+#endif
+	{
+		temp_high_block   = TEMP_HIGH_BLOCK;
+		temp_high_recover = TEMP_HIGH_RECOVER;
+	}
+
+	if (temp_adc <= temp_high_block)
+	{
+		if (health != POWER_SUPPLY_HEALTH_OVERHEAT
+		    && health != POWER_SUPPLY_HEALTH_UNSPEC_FAILURE) 
+		{
+			s3c_temp_control(POWER_SUPPLY_HEALTH_OVERHEAT);
+		}
+	} 
+	else if (temp_adc >= temp_high_recover && temp_adc <= TEMP_LOW_RECOVER) 
+	{
+		if (health == POWER_SUPPLY_HEALTH_OVERHEAT || health == POWER_SUPPLY_HEALTH_COLD)
+		{
+			s3c_temp_control(POWER_SUPPLY_HEALTH_GOOD);
+		}
+	} 
+	else if (temp_adc >= TEMP_LOW_BLOCK) 
+	{
+		if (health != POWER_SUPPLY_HEALTH_COLD && health != POWER_SUPPLY_HEALTH_UNSPEC_FAILURE) 
+		{
+			s3c_temp_control(POWER_SUPPLY_HEALTH_COLD);
+		}
+	}
+
+#ifdef __BATTERY_COMPENSATION__
+	//__map_temperature__:
+#endif
 
 #if 0
 
@@ -2067,241 +2159,33 @@ static int s3c_get_bat_temp(void)
 	}
 #else
 
-	switch (s3c_bat_info.batt_type) {
-	case S3C_BATTERY_TYPE_BYD:
-		{
-			int i = 0;
-			int offset = 0;
-			int array_size = 0;
-			array_size = ARRAY_SIZE(BYD_temper_table);
+	// 0~40mV, 3.26~3.3V => ADC 0
+	// 0.04V< x <3.26V, x = adc value
+	// 4096/(3.26-0.04) = 1272.25 adc/1V, 1.272 adc/1mV
+	mvolt = (1000*temp_adc) / 1272 + 80;
 
-			for (i = 0; i < (array_size - 1); i++) {
-				if (i == 0) {
-					if (temp_adc >= BYD_temper_table[0][0]) {
-						temp = BYD_temper_table[0][1];
-						break;
-					} else if (temp_adc <= BYD_temper_table[array_size - 1][0]) {
-						temp = BYD_temper_table[array_size - 1][1];
-						break;
-					}
-				}
-
-				if (BYD_temper_table[i][0] > temp_adc
-				    && BYD_temper_table[i + 1][0] <= temp_adc) {
-					temp = BYD_temper_table[i][1];
-
-					offset = (BYD_temper_table[i][0] - BYD_temper_table[i + 1][0]) /
-						((BYD_temper_table[i + 1][1] - BYD_temper_table[i][1]) / 10);
-					temp += ((BYD_temper_table[i][0] - temp_adc) / offset) * 10;
-					break;
-				}
-			}
-
-#ifdef __SET_TEST_VALUE__
-		if (ibatt_test_value == 1) {
-			if (test_on_off == 0) {
-				temp_adc = TEMP_BYD_HIGH_BLOCK - 20;
-				//temp_adc = TEMP_LOW_BLOCK + 20;
-				test_on_off = 1;
-			} else {
-				temp_adc = TEMP_BYD_HIGH_BLOCK - 40;
-				//temp_adc = TEMP_LOW_BLOCK + 40;
-				test_on_off = 0;
-			}
-
-			if (s3c_bat_info.bat_info.charging_source == CHARGER_BATTERY) {
-				temp_adc = TEMP_BYD_HIGH_RECOVER - 40;
-			}
-		}
-#endif /* __SET_TEST_VALUE__ */
-
-#ifdef SUPPORT_EVENT_TEMP_BLOCK
-			// Event CHG Block
-			event_case = OFFSET_MP3_PLAY | OFFSET_VOICE_CALL_2G | OFFSET_VOICE_CALL_3G	| OFFSET_VIDEO_PLAY;
-		
-			if (s3c_bat_info.device_state & event_case)
-			{
-				temp_high_block   = TEMP_BYD_EVENT_HIGH_BLOCK;
-				temp_high_recover = TEMP_BYD_EVENT_HIGH_RECOVER;
-			}
-			else
-#endif
-			{
-				temp_high_block   = TEMP_BYD_HIGH_BLOCK;
-				temp_high_recover = TEMP_BYD_HIGH_RECOVER;
-			}
-			temp_low_block   = TEMP_BYD_LOW_BLOCK;
-			temp_low_recover = TEMP_BYD_LOW_RECOVER;
-		}
-		break;
-	case S3C_BATTERY_TYPE_ATL:
-		// 0~40mV, 3.26~3.3V => ADC 0
-		// 0.04V< x <3.26V, x = adc value
-		// 4096/(3.26-0.04) = 1272.25 adc/1V, 1.272 adc/1mV
-		mvolt = (1000*temp_adc) / 1272 + 80;
-
-		//  - VDD: 3300mV
-		// Rt = ( 100K * Vadc  ) / ( VDD - 2 * Vadc )
-		if( mvolt >= 1650 )	{
-			printk("[BAT]:%s: TEMP. Vadc is wrong value (%d)!!\n", __func__, mvolt);
-			return s3c_bat_info.bat_info.batt_temp;
-		}
-
-		r = ( 100000 * mvolt ) / ( 3300 - 2 * mvolt );
-
-		/*calculating temperature*/
-		for( temp = 100; temp >= 0; temp-- ) {
-			if( ( NTH5G10P33B103E08TH_resistance_table[temp] - r ) >= 0 )
-				break;
-		}
-		temp -= 15;
-		temp *= 10;
-
-#ifdef __SET_TEST_VALUE__
-		if (ibatt_test_value == 1) {
-			if (test_on_off == 0) {
-				temp_adc = TEMP_ATL_HIGH_BLOCK - 20;
-				//temp_adc = TEMP_LOW_BLOCK + 20;
-				test_on_off = 1;
-			} else {
-				temp_adc = TEMP_ATL_HIGH_BLOCK - 40;
-				//temp_adc = TEMP_LOW_BLOCK + 40;
-				test_on_off = 0;
-			}
-
-			if (s3c_bat_info.bat_info.charging_source == CHARGER_BATTERY) {
-				temp_adc = TEMP_ATL_HIGH_RECOVER - 40;
-			}
-		}
-#endif /* __SET_TEST_VALUE__ */
-
-#ifdef SUPPORT_EVENT_TEMP_BLOCK
-		// Event CHG Block
-		event_case = OFFSET_MP3_PLAY | OFFSET_VOICE_CALL_2G | OFFSET_VOICE_CALL_3G	| OFFSET_VIDEO_PLAY;
-	
-		if (s3c_bat_info.device_state & event_case)
-		{
-			temp_high_block   = TEMP_ATL_EVENT_HIGH_BLOCK;
-			temp_high_recover = TEMP_ATL_EVENT_HIGH_RECOVER;
-		}
-		else
-#endif
-		{
-			temp_high_block   = TEMP_ATL_HIGH_BLOCK;
-			temp_high_recover = TEMP_ATL_HIGH_RECOVER;
-		}
-		temp_low_block	 = TEMP_ATL_LOW_BLOCK;
-		temp_low_recover = TEMP_ATL_LOW_RECOVER;
-		
-		break;
-	default:
-		break;
+	//  - VDD: 3300mV
+	// Rt = ( 100K * Vadc  ) / ( VDD - 2 * Vadc )
+	if( mvolt >= 1650 )	{
+		printk("[BAT]:%s: TEMP. Vadc is wrong value (%d)!!\n", __func__, mvolt);
+		return s3c_bat_info.bat_info.batt_temp;
 	}
+
+	r = ( 100000 * mvolt ) / ( 3300 - 2 * mvolt );
+
+	/*calculating temperature*/
+	for( temp = 100; temp >= 0; temp-- ) {
+		if( ( NTH5G10P33B103E08TH_resistance_table[temp] - r ) >= 0 )
+			break;
+	}
+	temp -= 15;
+	temp *= 10;
 #endif
 
 	battery_debug("[BAT]:%s: temp = %d, temp_adc_aver = %d\n", __func__, temp, temp_adc);
 	//pr_info("[BAT]:%s: temp = %d, temp_adc = %d, temp_adc_aver = %d, batt_health=%d\n",   __func__, temp, temp_adc, temp_adc_aver, s3c_bat_info.bat_info.batt_health);
 
 	s3c_bat_info.bat_info.batt_temp = temp;
-
-#if 1	/* use temp ADC to cut-off check */
-#ifdef __TEST_DEVICE_DRIVER__
-	/* switch (bat_temper_state) {
-	case 0:
-		break;
-	case 1:
-		temp_adc = TEMP_HIGH_BLOCK;
-		break;
-	case 2:
-		temp_adc = TEMP_LOW_BLOCK;
-		break;
-	default:
-		break;
-	}*/
-#endif /* __TEST_DEVICE_DRIVER__ */
-
-	//s3c_bat_info.bat_info.batt_temp_adc_aver=temp_adc_aver; /* eur-feature */
-
-#ifdef __BATTERY_COMPENSATION__
-	/*ex_case = OFFSET_MP3_PLAY 	| OFFSET_VOICE_CALL_2G 
-		| OFFSET_VOICE_CALL_3G	| OFFSET_DATA_CALL 
-		| OFFSET_VIDEO_PLAY;
-	if (s3c_bat_info.device_state & ex_case) {
-		if (health == POWER_SUPPLY_HEALTH_OVERHEAT
-		    || health == POWER_SUPPLY_HEALTH_COLD) {
-			s3c_temp_control(POWER_SUPPLY_HEALTH_GOOD);
-			//pr_info("[BAT]:%s : temp exception case. : device_state=%d \n", __func__, s3c_bat_info.device_state);
-		}
-		goto __map_temperature__;
-	}*/
-#endif /* __BATTERY_COMPENSATION__ */
-
-	if (temp_adc <= temp_high_block)
-	{
-		if (health != POWER_SUPPLY_HEALTH_OVERHEAT
-		    && health != POWER_SUPPLY_HEALTH_UNSPEC_FAILURE) 
-		{
-			s3c_temp_control(POWER_SUPPLY_HEALTH_OVERHEAT);
-		}
-	} 
-	else if (temp_adc >= temp_high_recover && temp_adc <= temp_low_recover) 
-	{
-		if (health == POWER_SUPPLY_HEALTH_OVERHEAT || health == POWER_SUPPLY_HEALTH_COLD)
-		{
-			s3c_temp_control(POWER_SUPPLY_HEALTH_GOOD);
-		}
-	} 
-	else if (temp_adc >= temp_low_block) 
-	{
-		if (health != POWER_SUPPLY_HEALTH_COLD && health != POWER_SUPPLY_HEALTH_UNSPEC_FAILURE) 
-		{
-			s3c_temp_control(POWER_SUPPLY_HEALTH_COLD);
-		}
-	}
-
-#ifdef __BATTERY_COMPENSATION__
-	//__map_temperature__:
-#endif
-#else	/* use temp to cut-off check */
-#ifdef SUPPORT_EVENT_TEMP_BLOCK
-	// Event CHG Block
-	event_case = OFFSET_MP3_PLAY | OFFSET_VOICE_CALL_2G | OFFSET_VOICE_CALL_3G	| OFFSET_VIDEO_PLAY;
-
-	if (s3c_bat_info.device_state & event_case)
-	{
-		temp_high_block   = TEMP_EVENT_HIGH_BLOCK;
-		temp_high_recover = TEMP_EVENT_HIGH_RECOVER;
-	}
-	else
-#endif
-	{
-		temp_high_block   = TEMP_HIGH_BLOCK;
-		temp_high_recover = TEMP_HIGH_RECOVER;
-	}
-
-	if (temp >= temp_high_block)
-	{
-		if (health != POWER_SUPPLY_HEALTH_OVERHEAT
-		    && health != POWER_SUPPLY_HEALTH_UNSPEC_FAILURE) 
-		{
-			s3c_temp_control(POWER_SUPPLY_HEALTH_OVERHEAT);
-		}
-	} 
-	else if (temp <= temp_high_recover && temp >= TEMP_LOW_RECOVER) 
-	{
-		if (health == POWER_SUPPLY_HEALTH_OVERHEAT || health == POWER_SUPPLY_HEALTH_COLD)
-		{
-			s3c_temp_control(POWER_SUPPLY_HEALTH_GOOD);
-		}
-	} 
-	else if (temp <= TEMP_LOW_BLOCK) 
-	{
-		if (health != POWER_SUPPLY_HEALTH_COLD && health != POWER_SUPPLY_HEALTH_UNSPEC_FAILURE) 
-		{
-			s3c_temp_control(POWER_SUPPLY_HEALTH_COLD);
-		}
-	}
-#endif
 
 	return temp;
 }
@@ -2451,8 +2335,6 @@ static unsigned long s3c_read_bat()
 		cnt = 0;
 	}
 	s3c_bat_info.bat_info.batt_vol_adc = adc;
-	battery_debug("[BAT]:%s: bat_adc = %d\n", __func__, adc);
-	
 	return calculate_average_adc(S3C_ADC_BATT_MON, adc);
 }
 
@@ -2461,11 +2343,6 @@ static int s3c_get_bat_vol(void)
 	int bat_vol = 0;
 	int bat_mon_vol = 0;
 	int bat_adc = s3c_read_bat();
-
-	int i = 0;
-	int array_size = 0;
-	int offset = 0;
-	int tick = 0;
 
 	if (bat_adc < 0) {
 		printk("%s: Read battery ADC failed!!\n", __func__);
@@ -2488,39 +2365,19 @@ static int s3c_get_bat_vol(void)
 	if (bat_vol >= 4200)
 		bat_vol = 4200;
 #else
-	switch (s3c_bat_info.batt_type) {
-	case S3C_BATTERY_TYPE_BYD:
-		array_size = ARRAY_SIZE(BYD_battery_table);
-		for (i = 0; i < array_size; i++) {
-			if (bat_adc >= BYD_battery_table[i][2]) {
-				bat_vol = BYD_battery_table[i][1];
-				if (!i) break; /*highest value */
-				offset = (bat_adc - BYD_battery_table[i][2]) * 10; 
-				tick = ((BYD_battery_table[i][2] - BYD_battery_table[i-1][2])*10) /
-					(BYD_battery_table[i][1] - BYD_battery_table[i-1][1]);
-				bat_vol += (offset / tick);
-				break;
-			}
-		}
-		break;
-	case S3C_BATTERY_TYPE_ATL:
-		// 0~40mV, 3.26~3.3V => ADC 0
-		// 0.04V< x <3.26V, x = adc value
-		// 4096/(3.26-0.04) = 1272.25 adc/1V, 1.272 adc/1mV
-		bat_mon_vol = (1000*bat_adc)/1272 + 80;
-		
-		// MAX8987 PMIC
-		// VBATTMONITOR(V) = 1.083 * ( VBATT - 1.25V ) - 0.896
-		// VBATT(V)  = ( VBATTMONITOR(V) + 0.896 ) / 1.083 + 1.25V
-		// VBATT(mV) = ( VBATTMONITOR(mV) + 896 ) / 1.083 + 1250mV
-		// VBATT(mV) = ( 1000 * ( VBATTMONITOR(mV) + 896 ) / 1083 ) + 1250
-		bat_vol = (1000 * (bat_mon_vol + 896) / 1083) + 1250;
-		if (bat_vol >= 4200)
-			bat_vol = 4200;
-		break;
-	default:
-		break;
-	}
+	// 0~40mV, 3.26~3.3V => ADC 0
+	// 0.04V< x <3.26V, x = adc value
+	// 4096/(3.26-0.04) = 1272.25 adc/1V, 1.272 adc/1mV
+	bat_mon_vol = (1000*bat_adc)/1272 + 80;
+	
+	// MAX8987 PMIC
+	// VBATTMONITOR(V) = 1.083 * ( VBATT - 1.25V ) - 0.896
+	// VBATT(V)  = ( VBATTMONITOR(V) + 0.896 ) / 1.083 + 1.25V
+	// VBATT(mV) = ( VBATTMONITOR(mV) + 896 ) / 1.083 + 1250mV
+	// VBATT(mV) = ( 1000 * ( VBATTMONITOR(mV) + 896 ) / 1083 ) + 1250
+	bat_vol = (1000 * (bat_mon_vol + 896) / 1083) + 1250;
+	if (bat_vol >= 4200)
+		bat_vol = 4200;
 #endif
 
 
@@ -2537,9 +2394,6 @@ static int s3c_get_bat_vol(void)
 	s3c_bat_info.bat_info.batt_vol = bat_vol;
 	dev_dbg(dev, "%s: adc = %d, bat_vol = %d\n", __func__, bat_adc,
 		bat_vol);
-	battery_debug("[BAT]:%s: bat_adc = %d, bat_vol = %d\n",
-		__func__, bat_adc, bat_vol);
-
 	return bat_vol;
 }
 
@@ -2551,8 +2405,6 @@ static int s3c_get_bat_level()
 
 	int i = 0;
 	int array_size = 0;
-
-	int (*battery_table)[3];
 
 	/* jmin : this is for GUMI line test for immediate power-off */
 	if (batt_quick_off_flag == 1)
@@ -2637,19 +2489,8 @@ static int s3c_get_bat_level()
 	}
 #endif
 #else
-	switch (s3c_bat_info.batt_type) {
-	case S3C_BATTERY_TYPE_BYD:
-		battery_table = BYD_battery_table;
-		array_size = ARRAY_SIZE(BYD_battery_table);
-		break;
-	case S3C_BATTERY_TYPE_ATL:
-		battery_table = ATL_battery_table;
-		array_size = ARRAY_SIZE(ATL_battery_table);
-		break;
-	default:
-		break;
-	}
-
+	array_size= ARRAY_SIZE(battery_table);
+	
 	for (i = 0; i < array_size; i++) {
 		if (bat_vol_adc >= battery_table[i][2]) {
 			bat_level = battery_table[i][0];
@@ -3298,31 +3139,6 @@ static DEVICE_ATTR(set_fuel_gauage_read, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, 
 static DEVICE_ATTR(set_fuel_gauage_reset, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_fuel_gauge_reset_show, NULL);
 #endif /* eur-feature */
 
-static int s3c_bat_get_type(void)
-{
-	int adc_board = 0;
-	int adc_batt = 0;
-	int offset = 0;
-	battery_type batt_type = S3C_BATTERY_TYPE_NONE;
-
-	adc_board = s3c_bat_get_adc_data(S3C_ADC_TEMPERATURE);
-	adc_batt = s3c_bat_get_adc_data(S3C_ADC_NTC);
-
-	offset = adc_board - adc_batt;
-	if (offset < 0) offset = adc_batt - adc_board;
-
-	pr_info("%s: ADC%d=%d, ADC%d=%d, offset=%d\n",
-		__func__, S3C_ADC_TEMPERATURE, adc_board,
-		S3C_ADC_NTC, adc_batt, offset);
-
-	if (offset < BATTERY_TYPE_MARGIN)
-		batt_type = S3C_BATTERY_TYPE_BYD;
-	else
-		batt_type = S3C_BATTERY_TYPE_ATL;
-
-	return batt_type;
-}
-
 static int __devinit s3c_bat_probe(struct platform_device *pdev)
 {
 	struct sec_bat_platform_data *pdata = dev_get_platdata(&pdev->dev);
@@ -3378,8 +3194,6 @@ static int __devinit s3c_bat_probe(struct platform_device *pdev)
 #ifdef LPM_MODE
 	s3c_bat_info.charging_mode_booting = 0;
 #endif
-
-	s3c_bat_info.batt_type = s3c_bat_get_type(); 
 
 #ifndef __FUEL_GAUGES_IC__
 	memset(adc_sample, 0x00, sizeof adc_sample);

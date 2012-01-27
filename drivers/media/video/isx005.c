@@ -2698,7 +2698,7 @@ static int isx005_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 
 //PCAM check it
 	case V4L2_CID_CAMERA_GET_SHT_TIME:
-		ctrl->value = state->shutter_speed;
+		ctrl->value = state->shutter_speed/1000;
 		err = 0;
 		break;
 	case V4L2_CID_CAMERA_GET_ISO:

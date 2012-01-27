@@ -130,11 +130,7 @@ extern struct platform_device s3c_device_usb_mass_storage;
 #    define SAMSUNG_RNDIS_PRODUCT_ID	0x6881
 #  endif
 #  define       ANDROID_DEBUG_CONFIG_STRING	 "ACM + UMS + ADB (Debugging mode)"
-#  ifdef CONFIG_USB_ANDROID_SAMSUNG_KIES_UMS
-#  define       ANDROID_KIES_CONFIG_STRING	 "UMS +ACM (SAMSUNG KIES mode)"
-#  else
 #  define       ANDROID_KIES_CONFIG_STRING	 "ACM + MTP (SAMSUNG KIES mode)"
-#  endif
 #  define       ANDROID_UMS_CONFIG_STRING	 "UMS Only (Not debugging mode)"
 #  define       ANDROID_MTP_CONFIG_STRING	 "MTP Only (Not debugging mode)"
 #  ifdef CONFIG_USB_ANDROID_SAMSUNG_RNDIS_WITH_MS_COMPOSITE

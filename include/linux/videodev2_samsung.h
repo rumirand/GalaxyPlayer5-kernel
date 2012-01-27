@@ -397,7 +397,6 @@ enum v4l2_focusmode {
 	FOCUS_MODE_MACRO_DEFAULT,
 	FOCUS_MODE_FACEDETECT_DEFAULT,
 	FOCUS_MODE_INFINITY,
-	FOCUS_MODE_POWEROFF,
 	FOCUS_MODE_MAX,
 };
 
@@ -631,7 +630,6 @@ struct sec_cam_parm {
 	int sharpness;
 	int white_balance;
 	int fps;
-	int sensor_mode;
 };
 
 #endif /* __LINUX_VIDEODEV2_SAMSUNG_H */

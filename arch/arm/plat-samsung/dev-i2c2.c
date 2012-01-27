@@ -51,13 +51,8 @@ struct platform_device s3c_device_i2c2 = {
 static struct s3c2410_platform_i2c default_i2c_data2 __initdata = {
 	.flags		= 0,
 	.bus_num	= 2,
-#ifdef CONFIG_VENTURI_USA
-	.slave_addr = 0x20,
-	.frequency	= 100*1000,
-#else
 	.slave_addr	= 0x10,
 	.frequency	= 400*1000,
-#endif
 	.sda_delay	= S3C2410_IICLC_SDA_DELAY5 | S3C2410_IICLC_FILTER_ON,
 };
 
@@ -103,3 +98,4 @@ void s3c_i2c2_force_stop()
 	iounmap(regs);
 }
 EXPORT_SYMBOL(s3c_i2c2_force_stop);
+

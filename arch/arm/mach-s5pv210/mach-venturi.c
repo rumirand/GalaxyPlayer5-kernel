@@ -93,7 +93,7 @@
 #include <media/s5k5ccgx_platform.h>
 #endif
 #ifdef CONFIG_VIDEO_S5K4ECGX
-#include <media/s5k4ecgx_platform.h>
+#include <media/s5k4ecgx.h>
 #endif
 
 #include <plat/regs-serial.h>
@@ -2204,6 +2204,10 @@ static int s5k4ecgx_ldo_en(bool en)
 	if (!en)
 		goto off;
 
+	s3c_gpio_cfgpin(S5PV210_GPD0(1), S3C_GPIO_OUTPUT);
+	s3c_gpio_setpull(S5PV210_GPD0(1), S3C_GPIO_PULL_NONE);
+	gpio_set_value(S5PV210_GPD0(1), 1);
+
 	// Turn CAM_ISP_CORE_1.2V(VDD_REG) on BUCK 4
 	err = regulator_enable(cam_isp_core_regulator);
 	if (err) {
@@ -2211,10 +2215,6 @@ static int s5k4ecgx_ldo_en(bool en)
 		goto off;
 	}
 	udelay(50);
-	
-	s3c_gpio_cfgpin(S5PV210_GPD0(1), S3C_GPIO_OUTPUT);
-	s3c_gpio_setpull(S5PV210_GPD0(1), S3C_GPIO_PULL_NONE);
-	gpio_set_value(S5PV210_GPD0(1), 1);
 	
 	/* Turn CAM_ISP_HOST_2.8V(VDDIO) on ldo 15*/
 	err = regulator_enable(cam_isp_host_regulator);
@@ -2439,27 +2439,22 @@ static int s5k4ecgx_power_en(int onoff)
 
 static  int s5k4ecgx_flash(int flash_mode)
 {
-	int i = 0;
+	int i = 0; 
 	int err=0;
 	int lux_val = 0;
 	printk("%s: start\n", __func__);
 
-	if (!s5k4ecgx_powered_on) {
-		printk("%s: Flash LED is already turned off \n", __func__);
-		return err;
-	}
-
 	err = gpio_request(GPIO_CAM_FLASH_EN, "GPIO_CAM_FLASH_EN");
 	if (err) {
 		pr_err("failed to request GPIO_FLASH_EN for camera control\n");
-		return err;
-	}
+		return err; 
+	}    
 
 	err = gpio_request(GPIO_CAM_FLASH_EN_SET, "GPIO_CAM_FLASH_EN_SET");
 	if (err) {
 		pr_err("failed to request GPIO_CAM_FLASH_EN_SET for camera control\n");
-		return err;
-	}
+		return err; 
+	}    
 
 	gpio_direction_output(GPIO_CAM_FLASH_EN, 0);
 	gpio_direction_output(GPIO_CAM_FLASH_EN_SET, 0);
@@ -2707,12 +2702,6 @@ static int s5k5ccgx_ldo_en(bool en)
 	}
 	udelay(50);
 	
-#ifdef CONFIG_VIDEO_S5K5CCGX_EUR
-	s3c_gpio_cfgpin(S5PV210_GPD0(1), S3C_GPIO_OUTPUT);
-	s3c_gpio_setpull(S5PV210_GPD0(1), S3C_GPIO_PULL_NONE);
-	gpio_set_value(S5PV210_GPD0(1), 1);
-#endif
-	
 	/* Turn CAM_ISP_HOST_2.8V(VDDIO) on ldo 15*/
 	err = regulator_enable(cam_isp_host_regulator);
 	if (err) {
@@ -2782,13 +2771,6 @@ off:
 		pr_err("Failed to disable regulator cam_isp_core\n");
 		result = err;
 	}
-	
-#ifdef CONFIG_VIDEO_S5K5CCGX_EUR
-	s3c_gpio_cfgpin(S5PV210_GPD0(1), S3C_GPIO_OUTPUT);
-	s3c_gpio_setpull(S5PV210_GPD0(1), S3C_GPIO_PULL_NONE);
-	gpio_set_value(S5PV210_GPD0(1), 0);
-#endif
-	
 	return result;
 }
 

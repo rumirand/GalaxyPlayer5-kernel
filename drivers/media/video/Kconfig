@@ -1139,13 +1139,6 @@ config VIDEO_S5K5CCGX
 		---help---
 		  This driver supports 5M SoC S5K5CCGX Camera module
 
-config VIDEO_S5K5CCGX_EUR
-		tristate "S5K5CCGX Camera power sequence extention for venturi eur dmb"
-		depends on I2C && VIDEO_V4L2
-		---help---
-		  S5K5CCGX Camera power sequence extention for CAM_PWR pin control
-		  for venturi eur dmb project
-
 config VIDEO_ISX005
         tristate "ISX005 Camera Sensor"
         depends on I2C && VIDEO_V4L2
@@ -1161,6 +1154,13 @@ config VIDEO_S5KA3DFX
 config VIDEO_S5K4ECGX
         tristate "S5K4ECGX Camera Sensor"
 		depends on I2C && VIDEO_V4L2
+	default n
+	---help---
+	  Enable extra debug messages for S5K4ECGX camera driver
+
+config VIDEO_S5K4ECGX_DEBUG
+	bool "S5K4ECGX Camera Sensor Debugging"
+	depends on VIDEO_S5K4ECGX
 	default n
 	---help---
 	  Enable extra debug messages for S5K4ECGX camera driver

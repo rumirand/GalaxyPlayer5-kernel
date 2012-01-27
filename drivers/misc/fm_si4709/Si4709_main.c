@@ -28,6 +28,7 @@
 #include <linux/stat.h>
 #include <linux/ioctl.h>
 #include <linux/gpio.h>
+#include <mach/gpio-aries.h>
 
 #include "Si4709_i2c_drv.h"
 #include "Si4709_dev.h"

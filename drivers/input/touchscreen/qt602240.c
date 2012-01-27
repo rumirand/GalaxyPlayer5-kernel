@@ -627,11 +627,6 @@ void qt_Noise_Suppression_Config_Init(void)
 		noise_freq_table.t9_blen_for_fherr = 0;
 		noise_freq_table.t9_thr_for_fherr = 35;
 		noise_freq_table.t22_noisethr_for_fherr = 30;
-		noise_freq_table.freq_for_fherr0[0] = 24;
-		noise_freq_table.freq_for_fherr0[1] = 35;
-		noise_freq_table.freq_for_fherr0[2] = 42;
-		noise_freq_table.freq_for_fherr0[3] = 50;
-		noise_freq_table.freq_for_fherr0[4] = 57;
 		noise_freq_table.freq_for_fherr1[0] = 45;
 		noise_freq_table.freq_for_fherr1[1] = 49;
 		noise_freq_table.freq_for_fherr1[2] = 55;
@@ -3094,10 +3089,7 @@ static void freq_hop_err_setting(int state)
 	write_mem(object_address+8, 1, &data);
 
 	for (i = 0; i< 5; i++) {
-		if (state == 0) {
-			data = noise_freq_table.freq_for_fherr0[i];
-			write_mem(object_address+11+i, 1, &data);
-		} else if (state == 1) {
+		if (state == 1) {
 			data = noise_freq_table.freq_for_fherr1[i];
 			write_mem(object_address+11+i, 1, &data);
 		} else if (state == 2) {
@@ -3344,15 +3336,13 @@ void  get_message(void)
 			}
 #endif
 			if ((quantum_msg[1]&0x08) == 0x08) {
-				if (touch_TA_detect) {
-					noise_freq_table.fherr_count++;
-					if (noise_freq_table.fherr_count == 12)
-						noise_freq_table.fherr_count = 0;
-					if ((noise_freq_table.fherr_count%3) == 0)
-						printk(KERN_DEBUG"[TSP] freq changed. noise level too high. %d\n",
-							noise_freq_table.fherr_count/3);
+				noise_freq_table.fherr_count++;
+				if (noise_freq_table.fherr_count == 11)
+					noise_freq_table.fherr_count = 1;
+				if ((noise_freq_table.fherr_count%3) == 0)
+					printk(KERN_DEBUG"[TSP] freq changed. noise level too high. %d\n",
+						noise_freq_table.fherr_count/3);
 					freq_hop_err_setting(noise_freq_table.fherr_count/3);
-				}
 			}
 		}
 

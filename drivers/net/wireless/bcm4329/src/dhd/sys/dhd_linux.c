@@ -358,11 +358,8 @@ extern int dhd_dongle_memsize;
 module_param(dhd_dongle_memsize, int, 0);
 
 /* Contorl fw roaming */
-#if defined(CONFIG_VENTURI_KOR) 
-uint dhd_roam = 0;//disable Roaming
-#else
 uint dhd_roam = 1;//disable Roaming
-#endif
+
 /* Control radio state */
 uint dhd_radio_up = 1;
 

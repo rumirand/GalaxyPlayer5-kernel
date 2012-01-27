@@ -76,11 +76,11 @@ void __s5p_tv_powerset_dac_onoff(bool on)
 	TVPMPRINTK("(%d)\n\r", on);
 
 	if (on) {
-//		regulator_enable(s5ptv_status.tv_tvout);
+		regulator_enable(s5ptv_status.tv_tvout);
 		writel(S5P_DAC_ENABLE, S5P_DAC_CONTROL);
 	} else {
 		writel(S5P_DAC_DISABLE, S5P_DAC_CONTROL);
-//		regulator_disable(s5ptv_status.tv_tvout);
+		regulator_disable(s5ptv_status.tv_tvout);
 	}
 
 	TVPMPRINTK("(0x%08x)\n\r", readl(S5P_DAC_CONTROL));
